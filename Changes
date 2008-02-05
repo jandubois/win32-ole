@@ -3,6 +3,12 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1403	Tue, November 21st, 2000
+	- Win32::OLE::Const: ignore non-existant typelibs (by Richard Letts)
+	- safeguard against access violation in Dispatch()
+	- Work around perl_call_sv() bug in ReportOleError(); use G_EVAL and
+	  rethrow the exception to get the runlevel right
+
 0.1402	Mon, September 25th, 2000
 	- Fix potential crash during global cleanup when _Unique is set
 	  (by Rudi Farkas <rudolf.farkas@lecroy.com>)

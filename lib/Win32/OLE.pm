@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError $_NewEnum $_Unique);
 
-$VERSION = '0.1402';
+$VERSION = '0.1403';
 
 use Carp;
 use Exporter;
@@ -949,6 +949,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.1402	  25 September 2000
+Version 0.1403	  21 November 2000
 
 =cut

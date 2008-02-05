@@ -64,7 +64,7 @@ extern "C" {
 #undef WORD
 typedef unsigned short WORD;
 
-#if PATCHLEVEL < 6
+#if PERL_VERSION < 6
 #   error Win32::OLE requires Perl 5.6.0 or later
 #endif
 
@@ -864,10 +864,21 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
     }
 
     if (cv) {
+        ENTER;
+        SAVETMPS;
         PUSHMARK(sp);
         XPUSHs(sv);
         PUTBACK;
-        perl_call_sv((SV*)cv, G_DISCARD);
+        perl_call_sv((SV*)cv, G_DISCARD|G_EVAL);
+        FREETMPS;
+        LEAVE;
+        if (SvTRUE(ERRSV)) {
+#if defined(ACTIVEPERL_CHANGELIST) || (PERL_VERSION > 6 || PERL_SUBVERSION > 0)
+            croak(Nullch); /* rethrow exception */
+#else
+            croak("%s", SvPV_nolen(ERRSV));
+#endif
+        }
     }
 
 }   /* ReportOleError */
@@ -3712,7 +3723,7 @@ PPCODE:
 	sv_catpvf(err, " \"%s\"", buffer);
 
 	if (hr == DISP_E_TYPEMISMATCH || hr == DISP_E_PARAMNOTFOUND) {
-	    if (argErr < dispParams.cNamedArgs)
+	    if (rghe && argErr < dispParams.cNamedArgs)
 		sv_catpvf(err, " argument \"%s\"",
 			  hv_iterkey(rghe[argErr], &len));
 	    else

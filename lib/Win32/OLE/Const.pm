@@ -52,6 +52,7 @@ sub LoadRegTypeLib {
 	next if defined($major) && $maj != $major;
 	next if defined($minor) && $min < $minor;
 	next if defined($language) && $language != $langid;
+	next unless -e $filename;
 	push @found, [$clsid,$maj,$min,$langid,$filename];
     }
 
