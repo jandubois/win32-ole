@@ -6,6 +6,7 @@ WriteMakefile(
     'PM'           => { 'OLE.pm'     => '$(INST_LIBDIR)/OLE.pm',
 			'Const.pm'   => '$(INST_LIBDIR)/OLE/Const.pm',
 			'Enum.pm'    => '$(INST_LIBDIR)/OLE/Enum.pm',
+			'NLS.pm'     => '$(INST_LIBDIR)/OLE/NLS.pm',
 			'Variant.pm' => '$(INST_LIBDIR)/OLE/Variant.pm',
 			# Compatibility layer: toplevel OLE.pm
 			'Compat.pm'  => '$(INST_LIBDIR)/../OLE.pm',

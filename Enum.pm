@@ -1,25 +1,21 @@
-package Win32::OLE::Enum;
-
 # The documentation is at the __END__
+
+package Win32::OLE::Enum;
 
 use strict;
 use Carp;
+require Win32::OLE; # Make sure the XS bootstrap has been called
 
 # Note: Calls to $self->Reset() have been wrapped in eval blocks because
 # the Reset() method seems to be unimplemented in Excel 7 (Office 95).
 
 # pure XS methods:
+# - new
+# - Clone
+# - Next
 # - Reset
+# - Skip
 # - DESTROY
-
-sub new {
-    my ($pack,$object) = @_;
-    my $self = \_NewEnum($object);
-    return unless defined $self;
-    bless $self => $pack;
-    eval { $self->Reset; };
-    return $self;
-}
 
 sub All {
     my $self = shift;
@@ -34,36 +30,6 @@ sub All {
         push @result, $next;
     }
     return @result;
-}
-
-sub Clone {
-    my $self = shift;
-    my $clone = \_Clone($self);
-    # Note: _Clone might already have died if $^W is set
-    croak "Clone not supported" if $clone == 0;
-    bless $clone => ref $self;
-    eval { $clone->Reset; };
-    return $clone;
-}
-
-sub Next {
-    my ($self,$count) = @_;
-    my @result;
-    $count = 1 unless defined $count;
-    croak "Invalid count: $count" unless $count > 0;
-    while ($count-- > 0) {
-        # OLE objects returned by _Next inherit the class of $self->{Object}
-        last unless defined(my $next = _Next($self));
-	push @result, $next;
-    }
-    return wantarray ? @result : pop(@result);
-}
-
-sub Skip {
-    my ($self,$count) = @_;
-    $count = 1 unless defined $count;
-    croak "Invalid count: $count" unless $count > 0;
-    return _Skip($self,$count);
 }
 
 1;

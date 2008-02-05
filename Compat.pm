@@ -6,10 +6,19 @@
 # Compatibility notes:
 # - GetObject -> GetActiveObjects
 # - keys %$collection -> Win32::OLE::Enum->All($collection)
+# - "unnamed" default method retries
 
 ########################################################################
+package Win32;
+########################################################################
 
+sub OLELastError {return OLE->LastError()}
+
+
+########################################################################
 package OLE::Variant;
+########################################################################
+
 use Win32::OLE qw(CP_ACP);
 use Win32::OLE::Variant;
 
@@ -18,7 +27,7 @@ use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
 @ISA = qw(Win32::OLE::Variant);
 
 $Warn = 0;
-$LCID = 2 << 10;
+$LCID = 2 << 10; # LOCALE_SYSTEM_DEFAULT
 $CP = CP_ACP;
 
 sub new {
@@ -28,24 +37,52 @@ sub new {
     return $variant;
 }
 
-########################################################################
-
-package Win32;
-
-sub OLELastError {return OLE->LastError()}
 
 ########################################################################
+package OLE::Tie;
+########################################################################
+use strict;
+use vars qw(@ISA);
+@ISA = qw(Win32::OLE::Tie);
 
+# !!! It is VERY important that Win32::OLE::Tie::DESTROY gets called. !!!
+# If you subclass DESTROY, don't forget to call $self->SUPER::DESTROY.
+# Otherwise the OLE interfaces will not be released until process termination!
+
+# Retry default method if property doesn't exist
+sub FETCH {
+    my ($self,$key) = @_;
+    return $self->SUPER::Fetch($key, 1);
+}
+
+sub STORE {
+    my ($self,$key,$value) = @_;
+    $self->SUPER::Store($key, $value, 1);
+}
+
+# Enumerate collection members, not object properties
+*FIRSTKEY = *Win32::OLE::Tie::FIRSTENUM;
+*NEXTKEY = *Win32::OLE::Tie::NEXTENUM;
+
+
+########################################################################
 package OLE;
+########################################################################
 use Win32::OLE qw(CP_ACP);
 
 use strict;
-use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
+
+# Disable overload; unfortunately "no overload" doesn't do it :-(
+use overload '""'     => sub {overload::StrVal($_[0])},
+             '0+'     => sub {overload::StrVal($_[0])};
+
+use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError $Tie);
 @ISA = qw(Win32::OLE);
 
 $Warn = 0;
-$LCID = 2 << 10;
+$LCID = 2 << 10; # LOCALE_SYSTEM_DEFAULT
 $CP = CP_ACP;
+$Tie = 'OLE::Tie';
 
 sub new {
     my $class = shift;
@@ -68,7 +105,7 @@ sub AUTOLOAD {
       unless ref($self) && UNIVERSAL::isa($self,'OLE');
 
     unless (defined $self->Dispatch($AUTOLOAD, $retval, @_)) {
-	# Retry unnamed default method
+	# Retry default method
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
     }
     return $retval;

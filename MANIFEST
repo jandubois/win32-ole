@@ -4,6 +4,7 @@ Const.pm	   The Win32::OLE::Const module: TypeLib constants.
 Enum.pm            The Win32::OLE::Enum module: Collection objects.
 MANIFEST
 Makefile.PL
+NLS.pm             OLE National Language Support module
 OLE.pm
 OLE.xs
 README
@@ -12,4 +13,9 @@ Variant.pm         The Win32::OLE::Variant module: VARIANT variables.
 eg/constants.pl    Sample script prints all Excel defined constants.
 eg/properties.pl   Sample script prints all Excel application properties.
 eg/typelibs.pl     Sample script prints all registered typelib names.
-t/ole.t
+eg/word2pod.pl     Prototype of a Word -> POD translator
+t/1_nls.t          Regression tests for Win32::OLE::NLS module
+t/2_variant.t      Regression tests for the Win32::OLE::Variant module
+t/3_ole.t          Regression tests for Win32::OLE using Excel 7 and above
+t/4_compat.t       Regression tests for OLE compatibility module
+t/5_unicode.t      Regression tests using the Unicode::String module

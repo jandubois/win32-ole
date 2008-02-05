@@ -6,23 +6,23 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0603';
+$VERSION = '0.0604';
 
-$Warn = $^W;
+use overload '""'     => \&valof,
+             '0+'     => \&valof,
+             fallback => 1;
 
-# Do not "use Carp;", it pollutes the OLE namespace!
-# It must be required though, because the XS code uses
-# Carp::croak for error reporting!
-require Carp;
-
+use Carp;
 use Exporter;
 use DynaLoader;
 @ISA = qw(Exporter DynaLoader);
 
 @EXPORT = qw();
-@EXPORT_OK = qw(CP_ACP CP_OEMCP With);
+@EXPORT_OK = qw(CP_ACP CP_OEMCP in valof with);
 
 bootstrap Win32::OLE;
+
+$Warn = $^W;
 
 sub CP_ACP {0;}    # ANSI codepage
 sub CP_OEMCP {1;}  # OEM codepage
@@ -42,7 +42,7 @@ sub CP_OEMCP {1;}  # OEM codepage
 
 sub LastError {
     unless (defined $_[0]) {
-	Carp::carp "LastError must be called as class method!";
+	carp("LastError must be called as class method!");
 	return;
     }
 
@@ -68,13 +68,34 @@ sub AUTOLOAD {
     my $self = shift;
     my $retval;
     $AUTOLOAD =~ s/.*:://o;
-    Carp::croak("Cannot autoload class method \"$AUTOLOAD\"") 
-      unless ref($self) && UNIVERSAL::isa($self,'Win32::OLE');
-    $self->Dispatch($AUTOLOAD, $retval, @_);
+    croak("Cannot autoload class method \"$AUTOLOAD\"") 
+      unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
+    my $success = $self->Dispatch($AUTOLOAD, $retval, @_);
+    unless (defined $success || ($^H & 0x200)) {
+	# Retry default method if C<no strict 'subs';>
+	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
+    }
     return $retval;
 }
 
-sub With {
+sub in {
+    require Win32::OLE::Enum;
+    Win32::OLE::Enum->All($_[0]);
+}
+
+sub valof {
+    my $arg = shift;
+    if (UNIVERSAL::isa($arg, 'Win32::OLE')) {
+	# VT_EMPTY variant for return code
+	my $variant = Win32::OLE::Variant->new(0,0);
+	$arg->Dispatch(undef, $variant);
+	$arg = $variant;
+    }
+    $arg = $arg->Value if UNIVERSAL::isa($arg, 'Win32::OLE::Variant');
+    return $arg;
+}
+
+sub with {
     my $object = shift;
     while (@_) {
 	my $property = shift;
@@ -82,7 +103,25 @@ sub With {
     }
 }
 
+########################################################################
+
+package Win32::OLE::Tie;
+
+# Only retry default method under C<no strict 'subs';>
+
+sub FETCH {
+    my ($self,$key) = @_;
+    $self->Fetch($key, ~($^H & 0x200));
+}
+
+sub STORE {
+    my ($self,$key,$value) = @_;
+    $self->Store($key, $value, ~($^H & 0x200));
+}
+
 1;
+
+########################################################################
 
 __END__
 
@@ -184,9 +223,10 @@ Here is a simple Microsoft Excel application.
 
 	# use existing instance if Excel is already running
 	eval {$ex = Win32::OLE->GetActiveObject('Excel.Application')};
-	if ($@) {
+	die "Excel not installed" if $@;
+	unless (defined $ex) {
 	    $ex = Win32::OLE->new('Excel.Application', sub {$_[0]->Quit;})
-		    or die "oops\n";
+		    or die "Oops, cannot start Excel";
 	}
 	
 	# open an existing workbook

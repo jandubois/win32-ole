@@ -1,12 +1,10 @@
-package Win32::OLE::Variant;
-
 # The documentation is at the __END__
+
+package Win32::OLE::Variant;
+require Win32::OLE;  # Make sure the XS bootstrap has been called
 
 use strict;
 use vars qw(@ISA @EXPORT @EXPORT_OK $CP $LCID $LastError);
-
-# Next version will have to "require Win32::OLE" to 
-# make sure the XS code gets loaded.
 
 use Exporter;
 @ISA = qw(Exporter);
@@ -33,6 +31,8 @@ use Exporter;
 	    );
 
 @EXPORT_OK = qw(
+		CP_ACP
+		CP_OEMCP
 		VT_UI2
 		VT_UI4
 		VT_I8
@@ -130,6 +130,15 @@ sub TKIND_ALIAS {6;}
 sub TKIND_UNION {7;}
 sub TKIND_MAX {8;}
 
+
+sub CP_ACP {0;}    # ANSI codepage
+sub CP_OEMCP {1;}  # OEM codepage
+
+# Package variables
+
+$CP = CP_ACP;
+$LCID = 0;         # language neutral
+
 # following subs are pure XS code:
 # - new(type,data)
 # - As(type)
@@ -183,7 +192,7 @@ supported transparently).  See L<Variants> below for details.
 C<As> converts the VARIANT to the new type before converting to a
 Perl value. This take the current LCID setting into account. For
 example a string might contain a ',' as the decimal point character.
-Using C<$variant->As(VT_R8) will correctly return the floating
+Using C<$variant->As(VT_R8)> will correctly return the floating
 point value.
 
 The underlying variant object is NOT changed by this method.

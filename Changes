@@ -1,5 +1,21 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0604
+	- New package variable Win32::OLE::Tie specifies 'Win32::OLE::Tie' class
+	- Win32::OLE::Tie FIRSTENUM/NEXTENUM added for compatibility mode
+	- Win32::OLE::Tie STORE/FETCH renamed. Added default method argument
+	- Default method retries enabled under C<no strict 'subs';> only
+	- New C<in> function; C<With> renamed to C<with>
+	- Const module now defines xlConstant instead of $xlConstant
+	- multi-dimensional arrays are folded to lower dimensions if possible
+	  (e.g. 1x1 array -> scalar, 1x5 array -> list of 5, 5x1 -> unchanged)
+	- new regression tests: unicode, variant
+	- new sample: eg/word2pod.pl
+	- first cut of NLS.pm module
+	- compiles and tests ok with 5.004_60 built with -DUSE_THREADS
+	- new C<valof> function
+	- Win32::OLE objects overloaded conversion to strings and numbers
+
 0.0603
 	- Win32::OLE::Enum::Count method removed
 	- SetSVFromVariant now works with SAFEARRAYs of non-VARIANT types too

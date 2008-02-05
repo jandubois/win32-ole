@@ -1,20 +1,5 @@
 # The following items WILL BE done in the near future :-)
 
--- Win32::OLE::Const::_Load use stash of "Win32::OLE" (???)
-
-- ReportOleError: use LOCALE_SYSTEM_DEFAULT for FormatMessage ???
-
-- GetWinOleEnumObject routine for error checking etc.
-
-- fix [[1,2]] array "buglette"
-
-- In() function to Win32::OLE::Enum?
-
-- Win32::OLE::Const: return inlined subs instead of scalar variables
-
-- baseIndex stuff
-  CheckOleError for GetHashedDispid?
-
 - Check for memory leaks once more :-)
 
 - BYREF variants
@@ -26,15 +11,18 @@
   Warn
   warning about reblessing Win32::OLE objects
   Excel: Don't change lcid on the fly!
+  Word: background printing
 
 - Win32::OLE::Variant needs a LastError method too!
 
 - Test suite:
+  Enum
   Variants
   BYREF variants
   SAFEARRAYs
   Unicode
   Compatibility module
+    PUTPROPERTY using "unnamed" method ????
 
 # This file contains random thoughts and notes about what might be
 # changed in future versions of Win32::OLE.

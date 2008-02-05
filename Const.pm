@@ -1,6 +1,6 @@
-package Win32::OLE::Const;
-
 # The documentation is at the __END__
+
+package Win32::OLE::Const;
 
 use strict;
 use Carp;
@@ -16,8 +16,10 @@ sub import {
     while (defined(my $key = each %$const)) {
 	# export only valid variable names
 	next unless $key =~ /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-	no strict 'refs';
-	*{"${callpkg}::${key}"} = \$const->{$key};
+	# old version:
+	#   no strict 'refs';
+	#   *{"${callpkg}::${key}"} = \$const->{$key};
+	eval "sub ${callpkg}::${key} { $const->{$key} }";
     }
 }
 
