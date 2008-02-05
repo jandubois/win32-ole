@@ -2115,6 +2115,7 @@ PPCODE:
     }
 
     if (wFlags & (DISPATCH_PROPERTYPUT|DISPATCH_PROPERTYPUTREF)) {
+	Safefree(dispParams.rgdispidNamedArgs);
 	dispParams.rgdispidNamedArgs = &dispIDParam;
 	dispParams.cNamedArgs = 1;
     }
@@ -2194,7 +2195,8 @@ PPCODE:
 	Safefree(dispParams.rgvarg);
     }
     Safefree(rghe);
-    Safefree(dispParams.rgdispidNamedArgs);
+    if (dispParams.rgdispidNamedArgs != &dispIDParam)
+	Safefree(dispParams.rgdispidNamedArgs);
 
     CheckOleError(stash, res, &excepinfo, err);
 

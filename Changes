@@ -1,5 +1,8 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0903	(unreleased, intended for libwin32-0.13)
+	- memory corruption fix (for ->SetProperty) method by Gurusamy Sarathy.
+
 0.0902	(unreleased)
 	- Allow specification of apartment model to Initialize() method. Special
 	  case is COINIT_OLEINITIALIZE to fall back to OleInitialize(). This
@@ -8,7 +11,7 @@ Revision history for Perl extension Win32::OLE.
 	- Compatibility module now uses OleInitilize()
 
 0.0901	(unreleased)
-	- PL_na replaced by local variable
+	- PL_na replaced by local variables
 	- Dispatch method now accepts [wFlags, 'method'] to specify
 	  various dispatch flags, e.g. DISPATCH_PROPERTYPUT
 	- new $Obj->SetProperty() methods supports setting properties

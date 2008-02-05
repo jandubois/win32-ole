@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0902';
+$VERSION = '0.0903';
 
 use Carp;
 use Exporter;
@@ -275,6 +275,30 @@ The GetObject class method returns an OLE reference to the specified
 object. The object is specified by a pathname optionally followed by
 additional item subcomponent separated by exclamation marks '!'.
 
+=item Win32::OLE->Initialize(COINIT)
+
+The C<Initialize> class method can be used to specify an alternative
+apartment model for the Perl thread. It must be called before the
+first object is created. Valid values for COINIT are:
+
+  Win32::OLE::COINIT_APARTMENTTHREADED - single threaded
+  Win32::OLE::COINIT_MULTITHREADED     - the default
+  Win32::OLE::COINIT_OLEINITIALIZE     - single threaded, additional OLE stuff
+
+COINIT_OLEINITIALIZE is sometimes needed when an OLE object uses
+additional OLE compound document technologies not available from the
+normal COM subsystem (for example MAPI.Session seems to require it).
+Both COINIT_OLEINITIALIZE and COINIT_APARTMENTTHREADED create a hidden
+top level window and a message queue for the Perl process. This may
+create problems with other application, because Perl normally doesn't
+process its message queue. This means programs using synchronous
+communication between applications (such as DDE initiation), may hang
+until Perl makes another OLE method call/property access or terminates.
+This applies to InstallShield setups and many things started to shell
+associations. Please try to utilize the C<Win32::OLE-E<gt>SpinMessageLoop>
+and C<Win32::OLE-E<gt>Uninitialize> methods if you can not use the default
+COINIT_MULTITHREADED model.
+
 =item OBJECT->Invoke(METHOD,ARGS)
 
 The C<Invoke> object method is an alternate way to invoke OLE
@@ -327,6 +351,22 @@ This method hides any native OLE object method called C<SetProperty>.
 The native method will still be available through the C<Invoke> method:
 
 	$Object->Invoke('SetProperty', @Args);
+
+=item Win32::OLE->SpinMessageLoop
+
+This class method retrieves all pending messages from the message queue
+and dispatches them to their respective window procedures. Calling this
+method is only necessary when not using the COINIT_MULTITHREADED model.
+All OLE method calls and property accesses automatically process the
+message queue.
+
+=item Win32::OLE->Uninitialize
+
+The C<Uninitialize> class method uninitializes the OLE subsystem. It
+also destroys the hidden top level window created by OLE for single
+threaded apartments. All OLE objects will become invalid after this call!
+It is possible to call the C<Initialize> class method again with a different
+apartment model after shutting down OLE with C<Uninitialize>.
 
 =back
 
@@ -776,6 +816,6 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.08	11 May 1998
+Version 0.0903	9 September 1998
 
 =cut
