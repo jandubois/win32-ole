@@ -1,6 +1,15 @@
 Revision history for Perl extension Win32::OLE.
 
-0.0810  (unreleased)
+0.09	(unreleased)
+	- fix conversion from VT_DISPATCH/VT_UNKNOWN Win32::OLE::Variant objects
+	  into Win32::OLE objects (were previously blessed into wrong class)
+	- dynamically load CoInitializeEx to make OLE.dll compatible with 
+	  "Win95 without DCOM" once again
+	- convert Perl globals to PL_xxx form (with defines for Perl 5.004_xx)
+	- minor doc tweaks
+	- call CoFreeUnusedLibraries() whenever an OLE object is released
+
+0.0810  (unreleased, maybe PRK for Win32 version)
 	- Removed USE_SV_PERINTERP, perl_atexit() only used for 5.004_68 and up
 
 0.0809  (unreleased) identical to 0.0808
@@ -9,11 +18,10 @@ Revision history for Perl extension Win32::OLE.
 	- Introduced USE_SV_PERINTERP to switch off perl_atexit() usage
 
 0.0807  (unreleased)
-	- OleInitialize repleaced by CoInitializeEx(NULL, COINIT_MULTITHREADED)
+	- OleInitialize replaced by CoInitializeEx(NULL, COINIT_MULTITHREADED)
 	  (as suggested by James Snyder). This gets rid of the hidden top-level
 	  window problem.
 	- Fixed warning in Win32::OLE::Const when called without arg
-	- todo: (Initialize/Uninitialize class methods no longer do anything)
 
 0.0806  (unreleased)
 	- Bug fixes for IsLocalMachine()

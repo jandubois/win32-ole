@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0810';
+$VERSION = '0.09';
 
 use Carp;
 use Exporter;
@@ -344,11 +344,17 @@ C<$OBJECT->{PROPERTYNAME} = $VALUE> on each trailing pair.
 The Win32::OLE objects can be overloaded to automatically convert to
 their values whenever they are used in a bool, numeric or string
 context. This is not enabled by default. You have to request it
-through the C<OVERLOAD> pseudotarget:
+through the C<OVERLOAD> pseudoexport:
 
 	use Win32::OLE qw(in valof with OVERLOAD);
 
-Please note that this is a global setting. If any module enables
+You can still get the original string representation of an object
+(C<Win32::OLE=0xDEADBEEF>), e.g. for debugging, by using the 
+C<overload::StrVal> method:
+
+	print overload::StrVal($object), "\n";
+
+Please note that C<OVERLOAD> is a global setting. If any module enables
 Win32::OLE overloading then it's active everywhere.
 
 =head2 Class Variables
@@ -695,6 +701,12 @@ in future, to allow the user to control which conditions are fatal.
 
 =back
 
+=head1 SEE ALSO
+
+The documentation for L<Win32::OLE::Const>, L<Win32::OLE::Enum>,
+L<Win32::OLE::NLS> and L<Win32::OLE::Variant> contains additional
+information about OLE support for Perl on Win32.
+
 =head1 AUTHORS
 
 Originally put together by the kind people at Hip and Activeware.
@@ -722,5 +734,3 @@ added support for named parameters, and other significant enhancements.
 Version 0.08	11 May 1998
 
 =cut
-
-

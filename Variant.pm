@@ -247,8 +247,13 @@ the respective sizes. They will still be variants. In the print
 statement the overloading converts them to string representation
 automatically.
 
-This currently works for integer, number and BSTR variants. Don't
-try it with VT_DISPATCH or array variants (yet).
+This currently works for integer, number and BSTR variants. It can
+also be used to pass an OLE object by reference:
+
+	my $Results = $App->CreateResultsObject;
+	$Object->Method(Variant(VT_DISPATCH|VT_BYREF, $Results));
+
+Don't try VT_BYREF with VT_ARRAY variants (yet).
 
 =head1 AUTHORS/COPYRIGHT
 
