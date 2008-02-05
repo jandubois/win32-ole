@@ -15,8 +15,8 @@ use vars qw($AUTOLOAD @ISA $Warn $LastError $CP $LCID);
 # use BEGIN because the class is already used in BEGIN block later
 BEGIN { @ISA = qw(Win32::OLE); } 
 
-$CP   = $Win32::OLE::CP;
-$LCID = $Win32::OLE::LCID;
+$CP   = Win32::OLE->Option('CP');
+$LCID = Win32::OLE->Option('LCID');
 
 sub AUTOLOAD {
   my $self = shift;
@@ -351,7 +351,7 @@ printf "ok %d\n", ++$Test;
 
 # 35. Get return value as Win32::OLE::Variant object
 $Cell = $Obj->Worksheets('My Sheet #1')->Range('B9');
-my $Variant = Win32::OLE::Variant->new(VT_EMPTY, 0);
+my $Variant = Win32::OLE::Variant->new(VT_EMPTY);
 $Cell->Dispatch('Value', $Variant);
 printf "# Variant is (%s,%s)\n", $Variant->Type, $Variant->Value;
 print "not " unless $Variant->Type == VT_BSTR && $Variant->Value eq 'Perl';

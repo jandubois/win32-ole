@@ -4,7 +4,7 @@ package Win32::OLE::Variant;
 require Win32::OLE;  # Make sure the XS bootstrap has been called
 
 use strict;
-use vars qw(@ISA @EXPORT @EXPORT_OK $CP $LCID $LastError $Warn);
+use vars qw(@ISA @EXPORT @EXPORT_OK);
 
 use Exporter;
 @ISA = qw(Exporter);
@@ -38,28 +38,13 @@ sub VT_UI1 {17;}
 sub VT_ARRAY {0x2000;}
 sub VT_BYREF {0x4000;}
 
-# Codepages
-sub CP_ACP {0;}
-sub CP_OEMCP {1;}
-
-# following subs are pure XS code:
-# - new(type,data)
-# - As(type)
-# - ChangeType(type)
-# - Unicode
+# For backward compatibility
+sub CP_ACP   {0;}     # ANSI codepage
+sub CP_OEMCP {1;}     # OEM codepage
 
 use overload '""'     => sub {$_[0]->As(VT_BSTR)},
              '0+'     => sub {$_[0]->As(VT_R8)},
              fallback => 1; 
-
-# XXX Call Win32::OLE->LastError(@_);
-
-#  sub LastError {
-#      no strict 'refs';
-#      my $LastError = "$_[0]::LastError";
-#      $$LastError = $_[1] if defined $_[1];
-#      return $$LastError;
-#  }
 
 sub Variant {
     return Win32::OLE::Variant->new(@_);
@@ -88,6 +73,17 @@ argument type called VARIANT. This is basically an object containing
 a data type and the actual data value. The data type is specified by
 the VT_xxx constants.
 
+=head2 Functions
+
+=over 8
+
+=item Variant(TYPE, DATA)
+
+This is just a function alias of the C<Win32::OLE::Variant->new()>
+method (see below). This function is exported by default.
+
+=back
+
 =head2 Methods
 
 =over 8
@@ -95,9 +91,39 @@ the VT_xxx constants.
 =item new(TYPE, DATA)
 
 This method returns a Win32::OLE::Variant object of the specified
-type that contains the given data.  The Win32::OLE::Variant object
+TYPE that contains the given DATA. The Win32::OLE::Variant object
 can be used to specify data types other than IV, NV or PV (which are
-supported transparently).  See L<Variants> below for details.
+supported transparently). See L<Variants> below for details.
+
+For VT_EMPTY and VT_NULL variants, the DATA argument may be omitted.
+For all non-VT_ARRAY variants DATA specifies the initial value.
+
+To create a SAFEARRAY variant, you have to specify the VT_ARRAY flag in
+addition to the variant base type of the array elemnts. In this cases
+DATA must be a list specifying the dimensions of the array. Each element
+can be either an element count (indices 0 to count-1) or an array
+reference pointing to the lower and upper array bounds of this dimension:
+
+	my $Array = Win32::OLE::Variant->new(VT_ARRAY|VT_R8, [1,2], 2);
+
+This creates a 2-dimensional SAFEARRAY of doubles with 4 elements:
+(1,0), (1,1), (2,0) and (2,1).
+
+A special case is the the creation of one-dimensional VT_UI1 arrays with
+a string DATA argument:
+
+	my $String = Variant(VT_ARRAY|VT_UI1, "String");
+
+This creates a 6 element character array initialized to "String". For
+backward compatibility VT_UI1 with a string initializer automatically
+implies VT_ARRAY. The next line is equivalent to the previous example:
+
+	my $String = Variant(VT_UI1, "String");
+
+If you really need a single character VT_UI1 variant, you have to create
+it using a numeric intializer:
+
+	my $Char = Variant(VT_UI1, ord('A'));
 
 =item As(TYPE)
 
@@ -114,15 +140,90 @@ The underlying variant object is NOT changed by this method.
 This method changes the type of the contained VARIANT in place. It
 returns the object itself, not the converted value.
 
+=item Copy(DIM)
+
+This method creates a copy of the object. If the original variant had
+the VT_BYREF bit set then the new object will contain a copy of the
+referenced data and not a reference to the same old data. The new
+object will not have the VT_BYREF bit set.
+
+	my $Var = Variant(VT_I4|VT_ARRAY|VT_BYREF, [1,5], 3);
+	my $Copy = $Var->Copy;
+
+The type of C<$Copy> is now VT_I4|VT_ARRAY and the value is a copy of
+the other SAFEARRAY. Changes to elements of C<$Var> will not be reflected
+in C<$Copy> and vice versa.
+
+The C<Copy> method can also be used to extract a single element of a
+VT_ARRAY | VT_VARIANT object. In this case the array indices must be
+specified as arguments:
+
+	my $Int = $Var->Copy(1, 2);
+
+C<$Int> is now a VT_I4 Variant object containing the value of element (1,2).
+
+=item Dim()
+
+Returns a list of array bounds for a VT_ARRAY variant. The list contains
+an array reference for each dimension of the variant's SAFEARRAY. This
+reference points to an array containing the lower and upper bounds for
+this dimension. For example:
+
+	my @Dim = $Var->Dim;
+
+Now C<@Dim> contains the following list: C<([1,5], [0,2])>.
+
+=item Get(DIM)
+
+For normal variants C<Get> returns the value of the variant, just like the
+C<Value> method. For VT_ARRAY variants C<Get> retrieves the value of a single
+array element. In this case C<DIM> must be a list of array indices. E.g.
+
+	my $Val = $Var->Get(2,0);
+
+As a special case for one dimensional VT_UI1|VT_ARRAY variants the C<Get>
+method without arguments returns the character array as a Perl string.
+
+	print $Var->Get, "\n";
+
 =item LastError()
 
-The C<LastError> method returns the last recorded OLE error in the
-Win32::OLE::Variant class. This is dual value like the C<$!> variable:
-in a numeric context it returns the error number and in a string
-context it returns the error message.
+The use of the C<Win32::OLE::Variant->LastError()> method is deprecated.
+Please use the C<Win32::OLE->LastError()> class method instead.
 
-The method corresponds to the C<Win32::OLE->LastError> method for
-Win32::OLE objects.
+=item Put(DIM, VALUE)
+
+The C<Put> method is used to assign a new value to a variant. The value will
+be coerced into the current type of the variant. E.g.:
+
+	my $Var = Variant(VT_I4, 42);
+	$Var->Put(3.1415);
+
+This changes the value of the variant to C<3> because the type is VT_I4.
+
+For VT_ARRAY type variants the indices for each dimension of the contained
+SAFEARRAY must be specified in front of the new value:
+
+	$Array->Put(1, 1, 2.7);
+
+The are a few special cases for one-dimensional VT_UI1 arrays: The VALUE
+can be specified as a string instead of a number. This will set the selected
+character to the first character of the string or to '\0' if the string was
+empty:
+
+	my $String = Variant(VT_UI1|VT_ARRAY, "ABCDE");
+	$String->Put(1, "123");
+	$String->Put(3, ord('Z'));
+	$String->Put(4, '');
+
+This will set the value of C<$String> to C<"A1CZ\0">. If the index is omitted
+then the string is copied to the value completely. The string is truncated
+if it is longer than the size of the VT_UI1 array. The result will be padded
+with '\0's if the string is shorter:
+
+	$String->Put("String");
+
+Now C<$String> contains the value "Strin".
 
 =item Type()
 
@@ -142,29 +243,21 @@ Win32::OLE method calls are converted.
 
 =back
 
-=head2 Functions
-
-=over 8
-
-=item Variant(TYPE, DATA)
-
-This is just a function alias of the Win32::OLE::Variant->new()
-method. This function is exported by default.
-
-=back
-
 =head2 Overloading
 
 The Win32::OLE::Variant package has overloaded the conversion to
-string an number formats. Therefore variant objects can be used in
+string and number formats. Therefore variant objects can be used in
 arithmetic and string operations without applying the C<Value> 
 method first.
 
 =head2 Class Variables
 
-This module supports the C<$CP>, C<$LCID> and C<$Warn> class variables.
-They have the same meaning as the variables in L<Win32::OLE> of the
-same name.
+The Win32::OLE::Variant class used to have its own set of class variables
+like C<$CP>, C<$LCID> and C<$Warn>. In version 0.1003 and later of the
+Win32::OLE module these variables have been eleminated. Now the settings
+of Win32::OLE are used by the Win32::OLE::Variant module too. Please read
+the documentation of the C<Win32::OLE->Option> class method.
+
 
 =head2 Constants
 
@@ -185,6 +278,8 @@ These constants are exported by default:
 	VT_VARIANT
 	VT_UNKNOWN
 	VT_UI1
+
+	VT_ARRAY
 	VT_BYREF
 
 =head2 Variants
@@ -205,12 +300,12 @@ The following type correspondence holds:
            ?              undef          VT_ERROR
            ?        Win32::OLE object    VT_DISPATCH
 
-Note that VT_BSTR is a wide character or Unicode string.  This presents a
+Note that VT_BSTR is a wide character or Unicode string. This presents a
 problem if you want to pass in binary data as a parameter as 0x00 is
 inserted between all the bytes in your data. The C<Variant()> method
-provides a solution to this.  With Variants the script
-writer can specify the OLE variant type that the parameter should be
-converted to.  Currently supported types are:
+provides a solution to this. With Variants the script writer can specify
+the OLE variant type that the parameter should be converted to. Currently
+supported types are:
 
         VT_UI1     unsigned char
         VT_I2      signed int (2 bytes)
@@ -222,11 +317,24 @@ converted to.  Currently supported types are:
         VT_CY      OLE Currency
         VT_BOOL    OLE Boolean
 
-When VT_DATE and VT_CY objects are created, the input
-parameter is treated as a Perl string type, which is then converted
-to VT_BSTR, and finally to VT_DATE of VT_CY using the VariantChangeType()
-OLE API function.  See L<Win32::OLE/EXAMPLES> for how these types
-can be used.
+When VT_DATE and VT_CY objects are created, the input parameter is treated
+as a Perl string type, which is then converted to VT_BSTR, and finally to
+VT_DATE of VT_CY using the C<VariantChangeType()> OLE API function.
+See L<Win32::OLE/EXAMPLES> for how these types can be used.
+
+=head2 Variant arrays
+
+A variant can not only contain a single value but also a multi-dimensional
+array of values (called a SAFEARRAY). In this case the VT_ARRAY flag must
+be added to the base variant type, e.g. C<VT_I4 | VT_ARRAY> for an array of
+integers. The VT_EMPTY and VT_NULL types are invalid for SAFEARRAYs. It
+is possible to create an array of variants: C<VT_VARIANT | VT_ARRAY>. In this
+case each element of the array can have a different type (including VT_EMPTY
+and VT_NULL). The elements of a VT_VARIANT SAFEARRAY cannot have either of the
+VT_ARRAY or VT_BYREF flags set.
+
+The lower and upper bounds for each dimension can be specified separately.
+They do not have to have all the same lower bound (unlike Perl's arrays).
 
 =head2 Variants by reference
 
@@ -245,13 +353,11 @@ the respective sizes. They will still be variants. In the print
 statement the overloading converts them to string representation
 automatically.
 
-This currently works for integer, number and BSTR variants. It can
-also be used to pass an OLE object by reference:
+VT_BYREF is now supported for all variant types (including SAFEARRAYs).
+It can also be used to pass an OLE object by reference:
 
 	my $Results = $App->CreateResultsObject;
 	$Object->Method(Variant(VT_DISPATCH|VT_BYREF, $Results));
-
-Don't try VT_BYREF with VT_ARRAY variants (yet).
 
 =head1 AUTHORS/COPYRIGHT
 

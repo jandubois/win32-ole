@@ -34,7 +34,7 @@ $CP = CP_ACP;
 sub new {
     my $self = shift;
     my $variant = $self->SUPER::new(@_);
-    $OLE::LastError = $LastError unless defined $variant;
+    $OLE::LastError = $Win32::OLE->LastError unless defined $variant;
     return $variant;
 }
 

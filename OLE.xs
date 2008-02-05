@@ -127,11 +127,8 @@ static char LASTERR_NAME[] = "LastError";
 static const int LASTERR_LEN = sizeof(LASTERR_NAME)-1;
 static char TIE_NAME[] = "Tie";
 static const int TIE_LEN = sizeof(TIE_NAME)-1;
-static char DISABLEOLEINIT_NAME[] = "__DisableOleInit";
-static const int DISABLEOLEINIT_LEN = sizeof(DISABLEOLEINIT_NAME)-1;
 
 #define COINIT_OLEINITIALIZE -1
-#define COINIT_ALREADYINITIALIZED -2
 
 typedef HRESULT (STDAPICALLTYPE FNCOINITIALIZEEX)(LPVOID, DWORD);
 typedef void (STDAPICALLTYPE FNCOUNINITIALIZE)(void);
@@ -1327,7 +1324,7 @@ HRESULT
 SetVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp)
 {
     HRESULT hr = S_OK;
-    VariantInit(pVariant);
+    VariantClear(pVariant);
 
     /* XXX requirement to call mg_get() may change in Perl > 5.005 */
     if (SvGMAGICAL(sv))
@@ -1642,11 +1639,10 @@ AssignVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, HV *stash)
 	break;
 
     case VT_BOOL:
-	/* Either all bits are 0 or ALL bits MUST BE 1 */
 	if (vt & VT_BYREF)
-	    *V_BOOLREF(pVariant) = SvTRUE(sv) ? ~0 : 0;
+	    *V_BOOLREF(pVariant) = SvTRUE(sv) ? VARIANT_TRUE : VARIANT_FALSE;
 	else
-	    V_BOOL(pVariant) = SvTRUE(sv) ? ~0 : 0;
+	    V_BOOL(pVariant) = SvTRUE(sv) ? VARIANT_TRUE : VARIANT_FALSE;
 	break;
 
     case VT_VARIANT:
@@ -1988,26 +1984,21 @@ Initialize(CPERLarg_ HV *stash, DWORD dwCoInit=COINIT_MULTITHREADED)
 	g_pfnCoUninitialize = NULL;
 	g_bInitialized = TRUE;
 
-	if (dwCoInit != COINIT_ALREADYINITIALIZED &&
-	    QueryPkgVar(PERL_OBJECT_THIS_ stash, DISABLEOLEINIT_NAME,
-			DISABLEOLEINIT_LEN) == 0)
-	{
-	    DBG(("(Co|Ole)Initialize(Ex)?\n"));
+	DBG(("(Co|Ole)Initialize(Ex)?\n"));
 
-	    if (dwCoInit == COINIT_OLEINITIALIZE) {
-		hr = OleInitialize(NULL);
-		if (SUCCEEDED(hr))
-		    g_pfnCoUninitialize = &OleUninitialize;
-	    }
-	    else {
-		if (g_pfnCoInitializeEx == NULL)
-		    hr = CoInitialize(NULL);
-		else
-		    hr = g_pfnCoInitializeEx(NULL, dwCoInit);
+	if (dwCoInit == COINIT_OLEINITIALIZE) {
+	    hr = OleInitialize(NULL);
+	    if (SUCCEEDED(hr))
+		g_pfnCoUninitialize = &OleUninitialize;
+	}
+	else {
+	    if (g_pfnCoInitializeEx == NULL)
+		hr = CoInitialize(NULL);
+	    else
+		hr = g_pfnCoInitializeEx(NULL, dwCoInit);
 
-		if (SUCCEEDED(hr))
-		    g_pfnCoUninitialize = &CoUninitialize;
-	    }
+	    if (SUCCEEDED(hr))
+		g_pfnCoUninitialize = &CoUninitialize;
 	}
 
 	if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
@@ -3586,161 +3577,6 @@ PPCODE:
 }
 
 void
-Dim(self)
-    SV *self
-PPCODE:
-{
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
-    if (pVarObj == NULL)
-	XSRETURN_EMPTY;
-
-    VARIANT *pVariant = &pVarObj->variant;
-    if (!V_ISARRAY(pVariant)) {
-	warn(MY_VERSION ": Win32::OLE::Variant->Dim(): Variant type (0x%x) "
-	     "is not an array", V_VT(pVariant));
-	XSRETURN_EMPTY;
-    }
-
-    SAFEARRAY *psa;
-    if (V_ISBYREF(pVariant))
-	psa = *V_ARRAYREF(pVariant);
-    else
-	psa = V_ARRAY(pVariant);
-
-    HRESULT hr = S_OK;
-    UINT cDims = SafeArrayGetDim(psa);
-    for (int iDim=0; iDim < cDims; ++iDim) {
-	long lLBound, lUBound;
-	hr = SafeArrayGetLBound(psa, 1+iDim, &lLBound);
-	if (FAILED(hr))
-	    break;
-	hr = SafeArrayGetUBound(psa, 1+iDim, &lUBound);
-	if (FAILED(hr))
-	    break;
-	AV *av = newAV();
-	av_push(av, newSViv(lLBound));
-	av_push(av, newSViv(lUBound));
-	XPUSHs(sv_2mortal(newRV_noinc((SV*)av)));
-    }
-    if (FAILED(hr))
-	XSRETURN_EMPTY;
-
-    /* return list of array refs on stack */
-}
-
-void
-Get(self,...)
-    SV *self
-ALIAS:
-    Put = 1
-PPCODE:
-{
-    char *paszMethod[] = {"Get", "Put"};
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
-    if (pVarObj == NULL)
-	XSRETURN_EMPTY;
-
-    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
-    VARIANT *pVariant = &pVarObj->variant;
-
-    if (!V_ISARRAY(pVariant)) {
-	if (items != 1+ix) {
-	    warn(MY_VERSION ": Win32::OLE::Variant->%s(): Wrong number of "
-		 "arguments" , paszMethod[ix]);
-	    XSRETURN_EMPTY;
-	}
-	if (ix == 0) { /* Get */
-	    ST(0) = sv_newmortal();
-	    SetSVFromVariantEx(PERL_OBJECT_THIS_ pVariant, ST(0), olestash);
-	    XSRETURN(1);
-	}
-	/* Put */
-	AssignVariantFromSV(PERL_OBJECT_THIS_ ST(1), pVariant, olestash);
-	XSRETURN_EMPTY;
-    }
-
-    SAFEARRAY *psa;
-    if (V_ISBYREF(pVariant))
-        psa = *V_ARRAYREF(pVariant);
-    else
-        psa = V_ARRAY(pVariant);
-
-    UINT cDims = SafeArrayGetDim(psa);
-
-    /* Special case: $v->put("string") for one-dimensional VT_UI1 arrays */
-    VARTYPE vt_base = V_VT(pVariant) & ~VT_BYREF & ~VT_ARRAY;
-    if (ix == 1 && vt_base == VT_UI1 && cDims == 1 && items == 2 && SvPOK(ST(1))) {
-	AssignVariantFromSV(PERL_OBJECT_THIS_ ST(1), pVariant, olestash);
-	XSRETURN_EMPTY;
-    }
-
-    if (items != 1+cDims+ix) {
-	warn(MY_VERSION ": Win32::OLE::Variant->%s(): Wrong number of indices; "
-	     " dimension of SafeArray is %d", paszMethod[ix], cDims);
-	XSRETURN_EMPTY;
-    }
-
-    ST(0) = &PL_sv_undef;
-    long *rgIndices;
-    New(0, rgIndices, cDims, long);
-    for (int iDim=0; iDim < cDims; ++iDim)
-        rgIndices[iDim] = SvIV(ST(1+iDim));
-
-    VARIANT variant, byref;
-    VariantInit(&variant);
-    VariantInit(&byref);
-    V_VT(&variant) = vt_base | VT_BYREF;
-    if (vt_base == VT_VARIANT)
-        V_VARIANTREF(&variant) = &byref;
-    else
-        V_BYREF(&variant) = &V_BYREF(&byref);
-
-    HRESULT hr = S_OK;
-    if (ix == 0) { /* Get */
-	hr = SafeArrayGetElement(psa, rgIndices, V_BYREF(&variant));
-	if (SUCCEEDED(hr)) {
-	    ST(0) = sv_newmortal();
-	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &variant, ST(0), olestash);
-	}
-    }
-    else { /* Put */
-	AssignVariantFromSV(PERL_OBJECT_THIS_ ST(items-1), &variant, olestash);
-	hr = SafeArrayPutElement(psa, rgIndices, V_BYREF(&variant));
-    }
-
-    Safefree(rgIndices);
-    CheckOleError(PERL_OBJECT_THIS_ olestash, hr);
-    XSRETURN(1);
-}
-
-void
-Type(self)
-    SV *self
-ALIAS:
-    Value = 1
-    _Value = 2
-PPCODE:
-{
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
-
-    ST(0) = &PL_sv_undef;
-    if (pVarObj != NULL) {
-	HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
-	SetLastOleError(PERL_OBJECT_THIS_ olestash);
-	ST(0) = sv_newmortal();
-	if (ix == 0) /* Type */
-	    sv_setiv(ST(0), V_VT(&pVarObj->variant));
-	else if (ix == 1) /* Value */
-	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &pVarObj->variant, ST(0),
-			       olestash);
-	else if (ix == 2) /* _Value */
-	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &pVarObj->variant, ST(0),
-			       olestash, TRUE);
-    }
-    XSRETURN(1);
-}
-
-void
 As(self,type)
     SV *self
     IV type
@@ -3793,6 +3629,279 @@ PPCODE:
     if (FAILED(hr))
 	ST(0) = &PL_sv_undef;
 
+    XSRETURN(1);
+}
+
+void
+Copy(self,...)
+    SV *self
+ALIAS:
+    _Clone = 1
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
+    if (pVarObj == NULL)
+	XSRETURN_EMPTY;
+
+    HRESULT hr;
+    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+
+    VARIANT *pSource = &pVarObj->variant;
+    VARIANT variant, byref;
+    VariantInit(&variant);
+    VariantInit(&byref);
+
+    /* Copy(DIM) makes a copy of a SAFEARRAY element */
+    if (items > 1) {
+	if (ix != 0) {
+	    warn(MY_VERSION ": Win32::OLE::Variant->_Clone doesn't support "
+		 "array elements");
+	    XSRETURN_EMPTY;
+	}
+
+	if (!V_ISARRAY(&pVarObj->variant)) {
+	    warn(MY_VERSION ": Win32::OLE::Variant->Copy(): %d %s specified, "
+		 "but variant is not a SAFEARRYA", items-1,
+		 items > 2 ? "indices" : "index");
+	    XSRETURN_EMPTY;
+	}
+
+	SAFEARRAY *psa = V_ISBYREF(pSource) ? *V_ARRAYREF(pSource)
+	                                    : V_ARRAY(pSource);
+	UINT cDims = SafeArrayGetDim(psa);
+	if (items-1 != cDims) {
+	    warn(MY_VERSION ": Win32::OLE::Variant->Copy() indices mismatch: "
+		 "specified %d vs. required %d", items-1, cDims);
+	    XSRETURN_EMPTY;
+	}
+
+	long *rgIndices;
+	New(0, rgIndices, cDims, long);
+	for (int iDim=0; iDim < cDims; ++iDim)
+            rgIndices[iDim] = SvIV(ST(1+iDim));
+
+	VARTYPE vt_base = V_VT(pSource) & ~VT_BYREF & ~VT_ARRAY;
+	V_VT(&variant) = vt_base | VT_BYREF;
+	V_VT(&byref) = vt_base;
+	if (vt_base == VT_VARIANT)
+            V_VARIANTREF(&variant) = &byref;
+	else
+            V_BYREF(&variant) = &V_BYREF(&byref);
+
+	hr = SafeArrayGetElement(psa, rgIndices, V_BYREF(&variant));
+	Safefree(rgIndices);
+	if (CheckOleError(PERL_OBJECT_THIS_ olestash, hr))
+	    XSRETURN_EMPTY;
+	pSource = &variant;
+    }
+
+    WINOLEVARIANTOBJECT *pNewVar;
+    Newz(0, pNewVar, 1, WINOLEVARIANTOBJECT);
+    VariantInit(&pNewVar->variant);
+    VariantInit(&pNewVar->byref);
+
+    if (ix == 0)
+	hr = VariantCopyInd(&pNewVar->variant, pSource);
+    else
+	hr = VariantCopy(&pNewVar->variant, pSource);
+
+    VariantClear(&byref);
+    if (FAILED(hr)) {
+	Safefree(pNewVar);
+	ReportOleError(PERL_OBJECT_THIS_ olestash, hr);
+	XSRETURN_EMPTY;
+    }
+
+    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pNewVar,
+		     WINOLEVARIANT_MAGIC);
+
+    HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+    SV *sv = newSViv((IV)pNewVar);
+    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
+    XSRETURN(1);
+}
+
+void
+Dim(self)
+    SV *self
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
+    if (pVarObj == NULL)
+	XSRETURN_EMPTY;
+
+    VARIANT *pVariant = &pVarObj->variant;
+    if (!V_ISARRAY(pVariant)) {
+	warn(MY_VERSION ": Win32::OLE::Variant->Dim(): Variant type (0x%x) "
+	     "is not an array", V_VT(pVariant));
+	XSRETURN_EMPTY;
+    }
+
+    SAFEARRAY *psa;
+    if (V_ISBYREF(pVariant))
+	psa = *V_ARRAYREF(pVariant);
+    else
+	psa = V_ARRAY(pVariant);
+
+    HRESULT hr = S_OK;
+    UINT cDims = SafeArrayGetDim(psa);
+    for (int iDim=0; iDim < cDims; ++iDim) {
+	long lLBound, lUBound;
+	hr = SafeArrayGetLBound(psa, 1+iDim, &lLBound);
+	if (FAILED(hr))
+	    break;
+	hr = SafeArrayGetUBound(psa, 1+iDim, &lUBound);
+	if (FAILED(hr))
+	    break;
+	AV *av = newAV();
+	av_push(av, newSViv(lLBound));
+	av_push(av, newSViv(lUBound));
+	XPUSHs(sv_2mortal(newRV_noinc((SV*)av)));
+    }
+
+    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+    if (CheckOleError(PERL_OBJECT_THIS_ olestash, hr))
+	XSRETURN_EMPTY;
+
+    /* return list of array refs on stack */
+}
+
+void
+Get(self,...)
+    SV *self
+ALIAS:
+    Put = 1
+PPCODE:
+{
+    char *paszMethod[] = {"Get", "Put"};
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
+    if (pVarObj == NULL)
+	XSRETURN_EMPTY;
+
+    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+    VARIANT *pVariant = &pVarObj->variant;
+
+    if (!V_ISARRAY(pVariant)) {
+	if (items-1 != ix) {
+	    warn(MY_VERSION ": Win32::OLE::Variant->%s(): Wrong number of "
+		 "arguments" , paszMethod[ix]);
+	    XSRETURN_EMPTY;
+	}
+	if (ix == 0) { /* Get */
+	    ST(0) = sv_newmortal();
+	    SetSVFromVariantEx(PERL_OBJECT_THIS_ pVariant, ST(0), olestash);
+	    XSRETURN(1);
+	}
+	/* Put */
+	AssignVariantFromSV(PERL_OBJECT_THIS_ ST(1), pVariant, olestash);
+	XSRETURN_EMPTY;
+    }
+
+    SAFEARRAY *psa = V_ISBYREF(pVariant) ? *V_ARRAYREF(pVariant)
+	                                  : V_ARRAY(pVariant);
+    UINT cDims = SafeArrayGetDim(psa);
+
+    /* Special case for one-dimensional VT_UI1 arrays */
+    VARTYPE vt_base = V_VT(pVariant) & ~VT_BYREF & ~VT_ARRAY;
+    if (vt_base == VT_UI1 && cDims == 1 && items-1 == ix) {
+	if (ix == 0) { /* Get */
+	    ST(0) = sv_newmortal();
+	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &pVarObj->variant, ST(0),
+			       olestash);
+	    XSRETURN(1);
+	}
+	else { /* Put */
+	    AssignVariantFromSV(PERL_OBJECT_THIS_ ST(1), pVariant, olestash);
+	    XSRETURN_EMPTY;
+	}
+    }
+
+    if (items-1 != cDims+ix) {
+	warn(MY_VERSION ": Win32::OLE::Variant->%s(): Wrong number of indices; "
+	     " dimension of SafeArray is %d", paszMethod[ix], cDims);
+	XSRETURN_EMPTY;
+    }
+
+    ST(0) = &PL_sv_undef;
+    long *rgIndices;
+    New(0, rgIndices, cDims, long);
+    for (int iDim=0; iDim < cDims; ++iDim)
+        rgIndices[iDim] = SvIV(ST(1+iDim));
+
+    VARIANT variant, byref;
+    VariantInit(&variant);
+    VariantInit(&byref);
+    V_VT(&variant) = vt_base | VT_BYREF;
+    V_VT(&byref) = vt_base;
+    if (vt_base == VT_VARIANT)
+        V_VARIANTREF(&variant) = &byref;
+    else
+        V_BYREF(&variant) = &V_BYREF(&byref);
+
+    HRESULT hr = S_OK;
+    if (ix == 0) { /* Get */
+	hr = SafeArrayGetElement(psa, rgIndices, V_BYREF(&variant));
+	if (SUCCEEDED(hr)) {
+	    ST(0) = sv_newmortal();
+	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &variant, ST(0), olestash);
+	}
+    }
+    else { /* Put */
+	AssignVariantFromSV(PERL_OBJECT_THIS_ ST(items-1), &variant, olestash);
+	hr = SafeArrayPutElement(psa, rgIndices, V_BYREF(&variant));
+    }
+    VariantClear(&byref);
+    Safefree(rgIndices);
+    CheckOleError(PERL_OBJECT_THIS_ olestash, hr);
+    XSRETURN(1);
+}
+
+void
+LastError(self,...)
+    SV *self
+PPCODE:
+{
+    // Win32::OLE::Variant->LastError() exists only for backward compatibility.
+    // It is now just a proxy for Win32::OLE->LastError().
+
+    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+    SV *sv = items == 1 ? NULL : ST(1);
+
+    PUSHMARK(sp);
+    PUSHs(sv_2mortal(newSVpv(HvNAME(olestash), 0)));
+    if (sv)
+	PUSHs(sv);
+    PUTBACK;
+    perl_call_method("LastError", GIMME_V);
+    SPAGAIN;
+
+    // return whatever Win32::OLE->LastError() returned
+}
+
+void
+Type(self)
+    SV *self
+ALIAS:
+    Value = 1
+    _Value = 2
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
+
+    ST(0) = &PL_sv_undef;
+    if (pVarObj != NULL) {
+	HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+	SetLastOleError(PERL_OBJECT_THIS_ olestash);
+	ST(0) = sv_newmortal();
+	if (ix == 0) /* Type */
+	    sv_setiv(ST(0), V_VT(&pVarObj->variant));
+	else if (ix == 1) /* Value */
+	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &pVarObj->variant, ST(0),
+			       olestash);
+	else if (ix == 2) /* _Value, see also: _Clone (alias of Copy) */
+	    SetSVFromVariantEx(PERL_OBJECT_THIS_ &pVarObj->variant, ST(0),
+			       olestash, TRUE);
+    }
     XSRETURN(1);
 }
 

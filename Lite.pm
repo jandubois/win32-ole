@@ -72,6 +72,33 @@ sub LastError {
     return $$LastError;
 }
 
+sub Option {
+    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
+	$AUTOLOAD = 'Option';
+	goto &AUTOLOAD;
+    }
+
+    shift; # class name
+
+    if (@_ == 1) {
+	my $Option = shift;
+	$Option eq "CP"   && return $CP;
+	$Option eq "LCID" && return $LCID;
+	$Option eq "Warn" && return $Warn;
+	_croak("Invalid Win32::OLE option: $Option");
+    }
+
+    while (@_) {
+	my ($Option,$Value) = splice @_, 0, 2;
+	if    ($Option eq "CP")   { $CP = $Value; }
+	elsif ($Option eq "LCID") { $LCID = $Value; }
+	elsif ($Option eq "Warn") { $Warn = $Value; }
+	else {
+	    _croak("Invalid Win32::OLE option: $Option");
+	}
+    }
+}
+
 sub Invoke {
     my ($self, $method, @args) = @_;
     my $retval;

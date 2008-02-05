@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1003';
+$VERSION = '0.1004';
 
 use Carp;
 use Exporter;
@@ -126,15 +126,11 @@ first object is created. Valid values for COINIT are:
 
   Win32::OLE::COINIT_APARTMENTTHREADED  - single threaded
   Win32::OLE::COINIT_MULTITHREADED      - the default
-
   Win32::OLE::COINIT_OLEINITIALIZE      - single threaded, additional OLE stuff
-  Win32::OLE::COINIT_ALREADYINITIALIZED - COM is already initialized
 
 COINIT_OLEINITIALIZE is sometimes needed when an OLE object uses
 additional OLE compound document technologies not available from the
 normal COM subsystem (for example MAPI.Session seems to require it).
-COINIT_ALREADYINITIALIZED should be used when the COM subsystem is
-already initialized and you don't want Win32::OLE to do it again.
 Both COINIT_OLEINITIALIZE and COINIT_APARTMENTTHREADED create a hidden
 top level window and a message queue for the Perl process. This may
 create problems with other application, because Perl normally doesn't
@@ -171,6 +167,18 @@ call. The numeric value can also explicitly be set by a call (which will
 discard the string value):
 
 	Win32::OLE->LastError(0);
+
+=item Win32::OLE->Option(OPTION)
+
+The C<Option> class method can be used to inspect and modify
+L<Module Options>. The single argument form retrieves the value of
+an option:
+
+	my $CP = Win32::OLE->Option('CP');
+
+A single call can be used to set multiple options simultaneously:
+
+	Win32::OLE->Option(CP => CP_ACP, Warn => 3);
 
 =item Win32::OLE->QueryObjectType(OBJECT)
 
@@ -302,25 +310,30 @@ C<overload::StrVal> method:
 Please note that C<OVERLOAD> is a global setting. If any module enables
 Win32::OLE overloading then it's active everywhere.
 
-=head2 Class Variables
+=head2 Module Options
+
+The following module options can be accessed and modified with the
+C<Win32::OLE->Option> class method. In earlier versions of the Win32::OLE
+module these options were manipulated directly as class variables. This
+practice is now deprecated.
 
 =over 8
 
-=item $Win32::OLE::CP
+=item CP
 
 This variable is used to determine the codepage used by all
 translations between Perl strings and Unicode strings used by the OLE
 interface. The default value is CP_ACP, which is the default ANSI
-codepage. It can also be set to CP_OEMCP which is the default OEM
-codepage. Both constants are not exported by default.
+codepage. Other possible values are CP_OEMCP, CP_MACCP, CP_UTF7 and
+CP_UTF8. These constants are not exported by default.
 
-=item $Win32::OLE::LCID
+=item LCID
 
 This variable controls the locale idnetifier used for all OLE calls.
 It is set to LOCALE_NEUTRAL by default. Please check the
 L<Win32::OLE::NLS> module for other locale related information.
 
-=item $Win32::OLE::Warn
+=item Warn
 
 This variable determines the behavior of the Win32::OLE module when
 an error happens. Valid values are:
@@ -543,8 +556,8 @@ arguments are still subject to locale specific interpretation. Perl uses the
 system default locale for all OLE transaction whereas Visual Basic uses a 
 type library specific locale. A Visual Basic script would use "R1C1" in string
 arguments to specify relative references. A Perl script running on a German
-language Windows would have to use "Z1S1". Set the C<$Win32::OLE::LCID> class
-variable to an English locale to write portable scripts. This variable should
+language Windows would have to use "Z1S1". Set the LCID module option
+to an English locale to write portable scripts. This variable should
 not be changed after creating the OLE objects; some methods seem to randomly
 fail if the locale is changed on the fly.
 
@@ -609,7 +622,7 @@ the properties of the object.
 
 =over 8
 
-=item 1
+=item *
 
 To invoke a native OLE method with the same name as one of the
 Win32::OLE methods (C<Dispatch>, C<Invoke>, C<SetProperty>, C<DESTROY>,
@@ -624,12 +637,6 @@ C<require_version>, C<dl_load_flags>,
 C<croak>, C<bootstrap>, C<dl_findfile>, C<dl_expandspec>, 
 C<dl_find_symbol_anywhere>, C<dl_load_file>, C<dl_find_symbol>,
 C<dl_undef_symbols>, C<dl_install_xsub> and C<dl_error>.
-
-=item 2
-
-The class global variables C<$Win32::OLE::WARN> and C<$Win32::OLE::LCID>
-must currently be accessed directly. An API to manipulate these settings
-will be made available in the future.
 
 =back
 
@@ -664,6 +671,6 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.1003	  12 November 1998
+Version 0.1004	  15 November 1998
 
 =cut

@@ -1,19 +1,28 @@
 Revision history for Perl extension Win32::OLE.
 
+0.1004	(unreleased)
+	- SetVariantFromSV calls VariantClear instead of VariantInit
+	- new Win32::OLE::Variant $object->Copy() method
+	- new Win32::OLE->Option() class method for CP/LCID/Warn access
+	- removed COINIT_ALREADYINITIALIZED and __DisableOleInit
+	- Win32::OLE::Variant->LastError added for backward compatibility
+	  (it's now just a proxy for Win32::OLE->LastError)
+
 0.1003	(unreleased)
-	- Win32::OLE::Variant: Support for SAFEARRAYs (VT_ARRAY) added.
-	  New methods: Dim/Get/Put.
+	- Win32::OLE::Variant: Support for SAFEARRAYs (VT_ARRAY) added
+	  New methods: Dim/Get/Put
 	- SetSVFromVariantEx() can optionaly convert VT_BYREF variants to
-	  Win32::OLE::Variant objects instead of simply dereferencing them.
+	  Win32::OLE::Variant objects instead of simply dereferencing them
+	- Win32::OLE::Variant "shares" class variables with Win32::OLE now
 	- Initialize/Uninitialize/SpinMessageLoop reset LastError
 	- EXPERIMENTAL ITypeInfo stuff
 	- CP_MACCP, CP_UTF7, CP_UTF8 constants in OLE.pm
 	- Win32::OLE::Enum::All converted to XS code. Enum.pm is now just POD
-	- New Win32::OLE::Lite module which requires *no* additional modules.
+	- New Win32::OLE::Lite module which requires *no* additional modules
 	- New COINIT_ALREADYINITIALIZED mode (and Win32::OLE::__DisableOleInit
-	  constant) to disable COM initialization by Win32::OLE.
+	  constant) to disable COM initialization by Win32::OLE
 	- {Ole|Co}Uninitialize() no longer called when the corresponding
-	  Initialize didn't succeed.
+	  Initialize didn't succeed
 
 0.1002  (released by ActiveState with ActivePerl builds 505 and 506)
 	- contains Win32::OLE::__DisableOleInit stuff ???
