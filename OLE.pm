@@ -3,78 +3,29 @@ package Win32::OLE;
 # The documentation is at the __END__
 
 use strict;
-use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
+use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD
+	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.06';
+$VERSION = '0.0602';
+
+$Warn = $^W;
 
 # Do not "use Carp;", it pollutes the OLE namespace!
 # It must be required though, because the XS code uses
 # Carp::croak for error reporting!
 require Carp;
 
-# We import the variables from Win32::OLE::Variant before we export them again.
-# In the next version the user must "use Win32::OLE::Variant" directly.
-use Win32::OLE::Variant qw(!new !Variant);
-
 use Exporter;
 use DynaLoader;
 @ISA = qw(Exporter DynaLoader);
 
-@EXPORT = qw(
-		Variant
-		VT_UI1
-		VT_I2
-		VT_I4
-		VT_R4
-		VT_R8
-		VT_DATE
-		VT_BSTR
-		VT_CY
-		VT_BOOL
-	    );
-@EXPORT_OK = qw(
-		VT_EMPTY
-		VT_NULL
-		VT_DISPATCH
-		VT_ERROR
-		VT_VARIANT
-		VT_UNKNOWN
-		VT_UI2
-		VT_UI4
-		VT_I8
-		VT_UI8
-		VT_INT
-		VT_UINT
-		VT_VOID
-		VT_HRESULT
-		VT_PTR
-		VT_SAFEARRAY
-		VT_CARRAY
-		VT_USERDEFINED
-		VT_LPSTR
-		VT_LPWSTR
-		VT_FILETIME
-		VT_BLOB
-		VT_STREAM
-		VT_STORAGE
-		VT_STREAMED_OBJECT
-		VT_STORED_OBJECT
-		VT_BLOB_OBJECT
-		VT_CF
-		VT_CLSID
-		TKIND_ENUM
-		TKIND_RECORD
-		TKIND_MODULE
-		TKIND_INTERFACE
-		TKIND_DISPATCH
-		TKIND_COCLASS
-		TKIND_ALIAS
-		TKIND_UNION
-		TKIND_MAX
-		With
-	       );
+@EXPORT = qw();
+@EXPORT_OK = qw(CP_ACP CP_OEMCP With);
 
 bootstrap Win32::OLE;
+
+sub CP_ACP {0;}    # ANSI codepage
+sub CP_OEMCP {1;}  # OEM codepage
 
 # The following class methods are pure XS code. They will delegate
 # to Dispatch when called as object methods.
@@ -89,33 +40,6 @@ bootstrap Win32::OLE;
 # - DESTROY()
 #
 
-# <compatibility> (deprecated, will be gone in next version)
-sub GetProperty {
-    Carp::carp("Use of Win32::OLE::GetProperty is deprecated") if $^W;
-    # GetProperty($object,$varName,$varReturn)
-    local $^W = 1;
-    eval { $_[2] = $_[0]->{$_[1]}; };
-    return !$@;
-}
-
-sub SetProperty {
-    Carp::carp("Use of Win32::OLE::SetProperty is deprecated") if $^W;
-    # SetProperty($object,$varName,$varValue)
-    local $^W = 1;
-    eval { $_[0]->{$_[1]} = $_[2]; };
-    return !$@;
-}
-
-*OLECreateObject = \&new;
-*Win32::OLELastError = \&Win32::OLE::LastError;
-*Win32::OLECreateObject = \&Win32::OLE::CreateObject;
-#*Win32::OLEDestroyObject = \&Win32::OLE::DestroyObject;
-*Win32::OLEDispatch = \&Win32::OLE::Dispatch;
-*Win32::OLEGetProperty = \&Win32::OLE::GetProperty;
-*Win32::OLESetProperty = \&Win32::OLE::SetProperty;
-
-# </compatibility>
-
 sub CreateObject {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
 	$AUTOLOAD = 'CreateObject';
@@ -126,22 +50,25 @@ sub CreateObject {
     return defined $_[1];
 }
 
+sub LastError {
+    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
+	$AUTOLOAD = 'LastError';
+	goto &AUTOLOAD;
+    }
+    no strict 'refs';
+    my $LastError = "$_[0]::LastError";
+    $$LastError = $_[1] if defined $_[1];
+    return $$LastError;
+}
+
 sub AUTOLOAD {
     my $self = shift;
     my $retval;
-    $AUTOLOAD =~ s/.*:://;
+    $AUTOLOAD =~ s/.*:://o;
     Carp::croak("Cannot autoload class method \"$AUTOLOAD\"") 
       unless ref($self) && UNIVERSAL::isa($self,'Win32::OLE');
     $self->Dispatch($AUTOLOAD, $retval, @_);
     return $retval;
-}
-
-sub Variant {
-    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'Variant';
-	goto &AUTOLOAD;
-    }
-    return Win32::OLE::Variant->new(@_);
 }
 
 sub With {
@@ -234,7 +161,8 @@ additional item subcomponent separated by exclamation marks '!'.
 
 The QueryObjectType class method returns a list of the type library
 name and the objects class name. In a scalar context it returns the
-class name only.
+class name only. It returns C<undef> when the type information is not
+available.
 
 =item With(OBJECT, PROPERTYNAME => VALUE, ...)
 
@@ -250,7 +178,7 @@ function is not exported by default.
 Here is a simple Microsoft Excel application.
 
 	use Win32::OLE;
-	
+
 	# use existing instance if Excel is already running
 	eval {$ex = Win32::OLE->GetActiveObject('Excel.Application')};
 	if ($@) {
@@ -268,11 +196,11 @@ Here is a simple Microsoft Excel application.
         # write a 2 rows by 3 columns range
         $sheet->Range("A8:C9")->{Value} = [[ undef, 'Xyzzy', 'Plugh' ],
                                            [ 42,    'Perl',  3.1415  ]];
-	
+
         # print "XyzzyPerl"
         $array = $sheet->Range("A8:B9")->{Value};
         print $array[0][1] . $array[1][1];
-	
+
 	# save and exit
 	$book->Save;
 	undef $book;
@@ -571,8 +499,8 @@ added support for named parameters, and other significant enhancements.
     (c) 1995 Microsoft Corporation. All rights reserved. 
 	Developed by ActiveWare Internet Corp., http://www.ActiveWare.com
 
-    Other modifications (c) 1997 by Gurusamy Sarathy <gsar@umich.edu>
-    and Jan Dubois <jan.dubois@ibm.net>
+    Other modifications Copyright (c) 1997, 1998 by Gurusamy Sarathy
+    <gsar@umich.edu> and Jan Dubois <jan.dubois@ibm.net>
 
     You may distribute under the terms of either the GNU General Public
     License or the Artistic License, as specified in the README file.

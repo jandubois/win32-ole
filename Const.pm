@@ -8,7 +8,7 @@ use Win32::OLE;
 use Win32::Registry;
 
 sub import {
-    my ($self,$name,$major,$minor,$language) = @_;
+    my ($self,$name,$major,$minor,$language,$codepage) = @_;
     return unless defined($name) && $name !~ /^\s*$/;
     my $callpkg = caller(0);
 
@@ -22,10 +22,10 @@ sub import {
 }
 
 sub Load {
-    my ($pack,$name,$major,$minor,$language) = @_;
+    my ($pack,$name,$major,$minor,$language,$codepage) = @_;
     undef $minor unless defined $major;
 
-    return _Load($name,undef,undef,undef,undef)
+    return _Load($name,undef,undef,undef,undef,undef)
       if UNIVERSAL::isa($name,'Win32::OLE');
 
     my ($hTypelib,$hClsid,$hVersion,$hLangid);
@@ -60,7 +60,7 @@ sub Load {
 		my $filename;
 		$hLangid->QueryValue('win32',$filename);
 		$hLangid->Close;
-		push @found, [$clsid,$maj,$min,$langid,$filename];
+		push @found, [$clsid,$maj,$min,$langid,$codepage,$filename];
 	    }
 	    $hVersion->Close;
 	}

@@ -7,6 +7,8 @@ WriteMakefile(
 			'Const.pm'   => '$(INST_LIBDIR)/OLE/Const.pm',
 			'Enum.pm'    => '$(INST_LIBDIR)/OLE/Enum.pm',
 			'Variant.pm' => '$(INST_LIBDIR)/OLE/Variant.pm',
+			# Compatibility layer: toplevel OLE.pm
+			'Compat.pm'  => '$(INST_LIBDIR)/../OLE.pm',
 		      },
     'XS'	   => { 'OLE.xs' => 'OLE.cpp' },
     'dist'	   => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },

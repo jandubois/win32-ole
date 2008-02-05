@@ -7,7 +7,7 @@ package Excel;
 use Win32::OLE;
 
 use strict qw(vars);
-use vars qw($AUTOLOAD @ISA);
+use vars qw($AUTOLOAD @ISA $Warn $LastError);
 @ISA = qw(Win32::OLE);
 
 sub AUTOLOAD {
@@ -15,7 +15,7 @@ sub AUTOLOAD {
   $AUTOLOAD =~ s/.*::/SUPER::/;
   my $retval = $self->$AUTOLOAD(@_);
   return $retval if defined($retval) || $AUTOLOAD eq 'DESTROY';
-  printf "# $AUTOLOAD returned OLE error 0x%08x\n", Win32::OLE->LastError();
+  printf "# $AUTOLOAD returned OLE error 0x%08x\n", $LastError;
   $::Fail = $::Test;
   return;
 }
@@ -25,12 +25,15 @@ sub AUTOLOAD {
 package main;
 use strict;
 use FileHandle;
-use Win32::OLE qw(With);
+use Win32::OLE qw(CP_ACP CP_OEMCP With);
 use Win32::OLE::Const ('Microsoft Excel');
 use Win32::OLE::Enum;
+use Win32::OLE::Variant;
 use vars qw($Test $Fail);
 
 $^W = 1;
+$Excel::Warn = 2;
+
 STDOUT->autoflush(1);
 STDERR->autoflush(1);
 
@@ -54,13 +57,15 @@ sub Quit {
 
 # 1. Create a new Excel automation server
 my $Excel = Excel->new('Excel.Application', \&Quit);
-printf "# App object type is %s\n", Win32::OLE->QueryObjectType($Excel);
+my $Type = Win32::OLE->QueryObjectType($Excel);
+print "# App object type is $Type\n";
 print "not " unless $Excel;
 printf "ok %d\n", ++$Test;
 
 # 2. Add a workbook (with default number of sheets)
 my $Book = $Excel->Workbooks->Add or print "not ";
-printf "# Book object type is %s\n", Win32::OLE->QueryObjectType($Book);
+$Type = Win32::OLE->QueryObjectType($Book);
+print "# Book object type is $Type\n";
 printf "ok %d\n", ++$Test;
 
 # 3. Test if class is inherited by objects created through $Excel
@@ -68,7 +73,7 @@ print "not " unless UNIVERSAL::isa($Book,'Excel');
 printf "ok %d\n", ++$Test;
 
 # 4. Generate OLE error, should be "croaked" by Win32::OLE
-eval { $Book->Xyzzy(223); };
+eval { local $Excel::Warn = 3; $Book->Xyzzy(223); };
 chomp $@;
 print "# Died with msg |$@|\n";
 print "not " unless $@;
@@ -76,13 +81,17 @@ printf "ok %d\n", ++$Test;
 
 # 5. Generate OLE error, should be trapped by Excel subclass
 $Fail = -1;
-{ local ($^W) = 0; $Book->Xyzzy(223); };
+{ local $Excel::Warn = 0; $Book->Xyzzy(223); };
+printf "# Excel::LastError returns %08x\n", Excel->LastError();
+Excel->LastError(0);
+printf "# Excel::LastError returns %08x\n", Excel->LastError();
 print "not " if $Fail != $Test;
 printf "ok %d\n", ++$Test;
 
 # 6. Get an object for 1st worksheet
 my $Sheet = $Book->Worksheets(1) or print "not ";
-printf "# Sheet object type is %s\n", Win32::OLE->QueryObjectType($Sheet);
+$Type = Win32::OLE->QueryObjectType($Sheet);
+print "# Sheet object type is $Type\n";
 printf "ok %d\n", ++$Test;
 
 # 7. Test the "With" function
@@ -111,7 +120,8 @@ foreach my $i (1..10) {
   $Sheet->Cells($i,$i)->{Value} = $i**2;
 }
 my $Cells = $Sheet->Cells(5,5);
-printf "# Cells object type is %s\n", Win32::OLE->QueryObjectType($Cells);
+$Type = Win32::OLE->QueryObjectType($Cells);
+print "# Cells object type is $Type\n";
 $Value = $Cells->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless $Cells->{Value} == 25;
@@ -222,15 +232,27 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
 
-# 23. Save workbook to file
+# 23. Translate character from ANSI -> OEM
+$Cells = $Book->Worksheets('My Sheet #1')->Cells(1,5);
+$Cells->{Formula} = '=CHAR(163)';
+$Excel::CP = CP_ACP;
+my $ANSI = $Cells->{Value};
+$Excel::CP = CP_OEMCP;
+my $OEM = $Cells->{Value};
+print "# ANSI(cp1252) -> OEM(cp437/cp850): 163 -> 156\n";
+print "# ANSI is \"$ANSI\" and OEM is \"$OEM\"\n";
+print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
+printf "ok %d\n", ++$Test;
+
+# 24. Save workbook to file
 print "not " unless $Book->SaveAs($File);
 printf "ok %d\n", ++$Test;
 
-# 24. Check if output file exists.
+# 25. Check if output file exists.
 print "not " unless -f $File;
 printf "ok %d\n", ++$Test;
 
-# 25. Access the same file object through a moniker.
+# 26. Access the same file object through a moniker.
 my $Obj = Win32::OLE->GetObject($File);
 for ($Count=0 ; $Count < 5 ; ++$Count) {
     my $Type = Win32::OLE->QueryObjectType($Obj);
@@ -244,5 +266,14 @@ print "# Value is \"$Value\"\n";
 print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
-# 26. Terminate server instance ("ok $Test\n" printed by Excel destructor method)
+
+# 27. Get return value as Win32::OLE::Variant object
+$Cells = $Obj->Worksheets('My Sheet #1')->Range('B9');
+my $Variant = Win32::OLE::Variant->new(VT_EMPTY, 0);
+$Cells->Dispatch('Value', $Variant);
+printf "# Variant is (%s,%s)\n", $Variant->Type, $Variant->Value;
+print "not " unless $Variant->Type == VT_BSTR && $Variant->Value eq 'Perl';
+printf "ok %d\n", ++$Test;
+
+# 28. Terminate server instance ("ok $Test\n" printed by Excel destructor method)
 exit;

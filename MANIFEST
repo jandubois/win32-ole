@@ -1,4 +1,5 @@
 Changes
+Compat.pm          Compatibility layer: old toplevel OLE.pm
 Const.pm	   The Win32::OLE::Const module: TypeLib constants.
 Enum.pm            The Win32::OLE::Enum module: Collection objects.
 MANIFEST
@@ -12,4 +13,3 @@ eg/constants.pl    Sample script prints all Excel defined constants.
 eg/properties.pl   Sample script prints all Excel application properties.
 eg/typelibs.pl     Sample script prints all registered typelib names.
 t/ole.t
-typemap

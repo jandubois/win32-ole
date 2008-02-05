@@ -3,7 +3,7 @@ package Win32::OLE::Variant;
 # The documentation is at the __END__
 
 use strict;
-use vars qw(@ISA @EXPORT @EXPORT_OK);
+use vars qw(@ISA @EXPORT @EXPORT_OK $CP $LCID $LastError);
 
 # Next version will have to "require Win32::OLE" to 
 # make sure the XS code gets loaded.
@@ -28,6 +28,8 @@ use Exporter;
 		VT_VARIANT
 		VT_UNKNOWN
 		VT_UI1
+
+	        VT_BYREF
 	    );
 
 @EXPORT_OK = qw(
@@ -83,6 +85,8 @@ sub VT_VARIANT {12;}
 sub VT_UNKNOWN {13;}
 sub VT_UI1 {17;}
 
+sub VT_BYREF {0x4000;}
+
 # All variable types defined below this line are invalid in VARIANTs!
 # They are used in TYPEDESCs and OLE property sets.
 
@@ -128,6 +132,11 @@ sub TKIND_MAX {8;}
 
 # following subs are pure XS code:
 # - new(type,data)
+# - As(type)
+
+use overload '""'     => sub {$_[0]->As(VT_BSTR)},
+             '0+'     => sub {$_[0]->As(VT_R8)},
+             fallback => 1; 
 
 sub Variant {
     return Win32::OLE::Variant->new(@_);

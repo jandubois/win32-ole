@@ -8,17 +8,17 @@ use Carp;
 # Note: Calls to $self->Reset() have been wrapped in eval blocks because
 # the Reset() method seems to be unimplemented in Excel 7 (Office 95).
 
+# pure XS methods:
+# - Reset
+# - DESTROY
+
 sub new {
     my ($pack,$object) = @_;
-    my $self = {Object => $object, Enum => _NewEnum($object)};
+    my $self = \_NewEnum($object);
+    return unless defined $self;
     bless $self => $pack;
     eval { $self->Reset; };
     return $self;
-}
-
-sub DESTROY {
-    my $self = shift;
-    _Release($self->{Enum});
 }
 
 sub All {
@@ -26,8 +26,8 @@ sub All {
     # C<All> can also be called as a class method like:
     # my @list = Win32::OLE::Enum->All($Excel->Workbooks);
     $self = $self->new(shift) unless ref $self;
+    return unless defined $self;
 
-    # Don't count on $self->Count being available or correct :-)
     eval { $self->Reset; };
     my @result;
     while (defined(my $next = $self->Next)) {
@@ -38,17 +38,12 @@ sub All {
 
 sub Clone {
     my $self = shift;
-    my $clone = {Object => $self->{Object}, Enum => _Clone($self->{Enum})};
+    my $clone = \_Clone($self);
     # Note: _Clone might already have died if $^W is set
-    croak "Clone not supported" if $clone->{Enum} == 0;
+    croak "Clone not supported" if $clone == 0;
     bless $clone => ref $self;
     eval { $clone->Reset; };
     return $clone;
-}
-
-sub Count {
-    my $self = shift;
-    return $self->{Object}->{Count};
 }
 
 sub Next {
@@ -58,22 +53,17 @@ sub Next {
     croak "Invalid count: $count" unless $count > 0;
     while ($count-- > 0) {
         # OLE objects returned by _Next inherit the class of $self->{Object}
-        last unless defined(my $next = _Next($self->{Enum},$self->{Object}));
+        last unless defined(my $next = _Next($self));
 	push @result, $next;
     }
     return wantarray ? @result : pop(@result);
-}
-
-sub Reset {
-    my $self = shift;
-    return _Reset($self->{Enum});
 }
 
 sub Skip {
     my ($self,$count) = @_;
     $count = 1 unless defined $count;
     croak "Invalid count: $count" unless $count > 0;
-    return _Skip($self->{Enum},$count);
+    return _Skip($self,$count);
 }
 
 1;
@@ -129,10 +119,6 @@ Returns a clone of the enumerator maintaining the current position within
 the collection (if possible). Note that the C<Clone> method is often not
 implemented. Use $Enum->Clone() in an eval block to avoid dying if you
 are not sure that Clone is supported.
-
-=item $Enum->Count()
-
-Returns the number of objects in the collection.
 
 =item $Enum->Next( [$count] )
 
