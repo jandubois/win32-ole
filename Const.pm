@@ -14,12 +14,29 @@ sub import {
     $self->Load($name,$major,$minor,$language,$codepage,scalar caller);
 }
 
-sub Load {
-    my ($pack,$name,$major,$minor,$language,$codepage,$caller) = @_;
-    undef $minor unless defined $major;
+sub EnumTypeLibs {
+    my ($self,$callback) = @_;
+    &$callback(@$_) foreach @$Typelibs;
+    return;
+}
 
-    return _Load($name,undef,undef,undef,undef,undef,undef)
-      if UNIVERSAL::isa($name,'Win32::OLE');
+sub Load {
+    my ($self,$name,$major,$minor,$language,$codepage,$caller) = @_;
+
+    if (UNIVERSAL::isa($name,'Win32::OLE')) {
+	my $typelib = $name->GetTypeInfo->GetContainingTypeLib;
+	return _Constants($typelib, undef);
+    }
+
+    undef $minor unless defined $major;
+    my $typelib = $self->LoadRegTypeLib($name,$major,$minor,
+					$language,$codepage);
+    return _Constants($typelib, $caller);
+}
+
+sub LoadRegTypeLib {
+    my ($self,$name,$major,$minor,$language,$codepage) = @_;
+    undef $minor unless defined $major;
 
     unless (defined($name) && $name !~ /^\s*$/) {
 	carp "Win32::OLE::Const->Load: No or invalid type library name";
@@ -54,7 +71,7 @@ sub Load {
     } @found;
 
     #printf "Loading %s\n", join(' ', @{$found[0]});
-    return _Load(@{$found[0]},$codepage,$caller);
+    return _LoadRegTypeLib(@{$found[0]},$codepage);
 }
 
 1;

@@ -92,3 +92,10 @@ $Count = $Excel->Workbooks->Count;
 printf "# Workbookcount: $Count\n";
 print "not " unless $Count == 0;
 printf "ok %d\n", ++$Test;
+
+# 6. Test the Forwarder object
+my $forward = Win32::OLE->Forward(sub {$MayClose = shift});
+$forward->Invoke(undef, 42);
+print "# MayClose is $MayClose\n";
+print "not " unless $MayClose == 42;
+printf "ok %d\n", ++$Test;

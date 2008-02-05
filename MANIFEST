@@ -4,6 +4,7 @@ Const.pm		Win32::OLE::Const module: TypeLib constants
 Enum.pm			Win32::OLE::Enum module: Collection objects
 Lite.pm                 Lightweight OLE.pm not using ANY other modules
 MANIFEST
+MANIFEST.SKIP
 Makefile.PL
 NEWS.pod		History of user visable changes
 NLS.pm			Win32::OLE::NLS module: National Language Support
@@ -13,11 +14,29 @@ README
 ToDo
 TypeInfo.pm             Win32::OLE::TypeInfo module
 Variant.pm		Win32::OLE::Variant module: VARIANT variables
+
+browser/browser.dhtml
+browser/browser.html
+
+browser/icons/Class.png
+browser/icons/Const.png
+browser/icons/Default.png
+browser/icons/Enum.png
+browser/icons/Event.png
+browser/icons/Function.png
+browser/icons/Global.png
+browser/icons/Help.png
+browser/icons/Library.png
+browser/icons/Module.png
+browser/icons/Property.png
+browser/icons/Type.png
+
 eg/constants.pl		Sample script prints all Excel defined constants
 eg/properties.pl	Sample script prints all Excel application properties
 eg/typelibs.pl		Sample script prints all registered typelib names
 eg/word2pod.pl		Prototype of a Word -> POD translator
 eg/word2xxx.pl		Sample file type converter
+
 t/1_nls.t		Regression tests for Win32::OLE::NLS module
 t/2_variant.t		Regression tests for the Win32::OLE::Variant module
 t/3_ole.t		Regression tests for Win32::OLE using Excel 7 and above

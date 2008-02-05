@@ -1,0 +1,608 @@
+<HTML> <!-- Hey Emacs, please edit in -*- perl -*- mode -->
+
+<!-- We need some JScript until the PerlScript bugs are fixed. :-( -->
+<SCRIPT>
+function rollon(frame) {
+    var event = window.parent.frames(frame).event;
+    if (event.srcElement.className == "Inactive") {
+        event.srcElement.className = "Active";
+        event.cancelBubble = true;
+    }
+    else if (event.srcElement.className == "InactiveHidden") {
+        event.srcElement.className = "ActiveHidden";
+        event.cancelBubble = true;
+    }
+}
+function rolloff(frame) {
+    var event = window.parent.frames(frame).event;
+    if (event.srcElement.className == "Active") {
+        event.srcElement.className = "Inactive";
+        event.cancelBubble = true;
+    }
+    else if (event.srcElement.className == "ActiveHidden") {
+        event.srcElement.className = "InactiveHidden";
+        event.cancelBubble = true;
+    }
+}
+
+</SCRIPT>
+
+<SCRIPT LANGUAGE="PerlScript">
+
+# Start PerlScript
+# ================
+
+use Config;			# determine $confix{prefix} for CSS path
+use Win32::OLE::Const;
+use Win32::OLE::TypeInfo;
+
+# Global Variables
+# ================
+
+# global flags (changed by checkboxes)
+my $ShowHidden  = '';		# set to '' or 'CHECKED'
+my $GroupByType = '';		# set to '' or 'CHECKED'
+
+# for showHelpFile() event
+my ($HelpFile,$HelpContext);
+
+# list of all registered type libraries
+my @Library;
+sub libCLSID    () {0}
+sub libNAME     () {1}
+sub libMAJOR    () {2}
+sub libMINOR    () {3}
+sub libLANGUAGE () {4}
+sub libFILENAME () {5}
+
+# list of all types
+my @Type;
+sub typeLIB  () {0}
+sub typeINFO () {1}
+sub typeDOC  () {2}
+sub typeATTR () {3}
+
+# list of all members
+my @Member;
+sub membTYPE     () {0}
+sub membDESC     () {1}
+sub membDOC      () {2}
+sub membICON     () {3}
+sub membREADONLY () {4}
+sub membHIDDEN   () {5}
+
+# index to the currently selected entries or C<undef>
+my ($Library,$Type,$Member);
+
+# hash of frame objects
+my %frame;
+
+# Use the ActivePerl documentation stylesheet for all frames
+# ==========================================================
+
+my $css = "$Config{prefix}\\html\\win32prk.css";
+foreach my $frame (qw(Header Libraries Types Members Footer)) {
+    $frame{$frame} = $window->parent->frames($frame);
+    $frame{$frame}->document->createStyleSheet($css);
+}
+
+# Rollon/Rolloff highlighting styles for Libraries, Types and Members
+# ===================================================================
+
+foreach my $frame (qw(Libraries Types Members)) {
+    $frame{$frame}->{marginHeight} = 1; # XXX doesn't seem to work
+    my $ss = $frame{$frame}->document->createStyleSheet;
+    my $cursor = "cursor: hand";
+    $ss->addRule(".Inactive",	    "$cursor; color: black");
+    $ss->addRule(".Active",	    "$cursor; color: blue");
+    $ss->addRule(".InactiveHidden", "$cursor; color: silver");
+    $ss->addRule(".ActiveHidden",   "$cursor; color: cornflowerblue");
+}
+
+# String comparison
+# =================
+
+sub strcmp {
+    my ($a,$b) = @_;
+    $a =~ s/^_*(.*)/\l\1/; # skip leading underscores ...
+    $b =~ s/^_*(.*)/\l\1/; # ... and translate to lowercase
+    return $a cmp $b;
+}
+
+# showHelpfile event
+# ==================
+
+sub showHelpfile {
+    $window->{status} = "Show Helpfile: $HelpFile  Context: $HelpContext";
+    #$window->showHelp("mk:\@MSITStore:$HelpFile::/>mywindow",
+    #                  $HelpContext, "popup");
+    $window->showHelp($HelpFile, $HelpContext, "popup");
+}
+
+# Initialize the "Header" frame
+# =============================
+
+my $html = <<HTML;
+    <TABLE BORDER=0 CELLPADDING=0 CELLSPACING=0 WIDTH=100%>
+	<TR><TD CLASS=block VALIGN=MIDDLE WIDTH=100% BGCOLOR=#cc0066>
+	    <FONT SIZE=+1 COLOR=#ff99cc><STRONG>&nbsp;
+		Win32::OLE - Type Library Browser
+	    </STRONG></FONT>
+	</TD></TR>
+    </TABLE>
+
+    <TABLE BORDER=0 CELLPADDING=0>
+	<TR><TD>Show hidden elements:</TD>
+	    <TD><INPUT TYPE="checkbox" $ShowHidden
+		 onclick="parent.Libraries.ShowHidden"></TD></TR>
+	<TR><TD>Group elements by type:</TD>
+	    <TD><INPUT TYPE="checkbox" $GroupByType
+		 onclick="parent.Libraries.GroupByType"></TD></TR>
+    </TABLE>
+HTML
+
+$frame{Header}->document->body->{innerHTML} = $html;
+
+sub ShowHidden {
+    $ShowHidden = $frame{Header}->event->srcElement->checked;
+    $frame{Libraries}->createTypeTable;
+}
+
+sub GroupByType {
+    $GroupByType = $frame{Header}->event->srcElement->checked;
+    $frame{Libraries}->createTypeTable;
+}
+
+
+# Initialize the "Footer" frame
+# =============================
+
+my $ss = $frame{Footer}->document->createStyleSheet;
+$ss->addRule(".Indented", "margin-left:48; margin-top:0");
+undef $ss;
+
+
+# Get a list of all type libraries from the registry
+# ==================================================
+
+Win32::OLE::Const->EnumTypeLibs(sub {
+    my ($clsid,$title,$version,$langid,$filename) = @_;
+    return unless $version =~ /^([0-9a-fA-F]+)\.([0-9a-fA-F]+)$/;
+    my ($maj,$min) = (hex($1), hex($2));
+    push @Library, [$clsid,$title,$maj,$min,$langid,$filename];
+});
+
+
+@Library = sort {lc $a->[libNAME] cmp lc $b->[libNAME]} @Library;
+
+
+# Create list of type libraries
+# =============================
+
+$html = "<TABLE>\n";
+for my $id (0..@Library-1) {
+    $html .= <<HTML;
+    <TR><TD NOWRAP><IMG SRC="icons/Library.png" WIDTH=16 HEIGHT=16>
+	    <SPAN ID=LIB_$id CLASS=Inactive onclick=selectLibrary()
+		  onmouseover=rollon("Libraries")
+		  onmouseout=rolloff("Libraries")>
+	     $Library[$id]->[libNAME]</SPAN></TD>
+	<TD>$Library[$id]->[libMAJOR].$Library[$id]->[libMINOR]</TD></TR>
+HTML
+}
+$html .= "</TABLE>";
+$window->document->write($html);
+
+
+# Select a type library and display the types
+# ===========================================
+
+my @icon;
+$icon[TKIND_COCLASS]   = 'Class';
+$icon[TKIND_DISPATCH]  = 'Class';
+$icon[TKIND_ENUM]      = 'Enum';
+$icon[TKIND_MODULE]    = 'Module';
+
+my $tlib; # XXX Hack alert!
+
+sub selectLibrary {
+    my $e = $window->event;
+    my ($id) = ($e->srcElement->id =~ /^LIB_(\d+)/);
+    return unless defined $id;
+
+    # Change selection marker
+    $window->document->all("LIB_$Library")->style->{fontWeight} = 'normal'
+	if defined $Library;
+    $Library = $id;
+    $window->document->all("LIB_$Library")->style->{fontWeight} = 'bold';
+
+    # Load new type library
+    my @def = @{$Library[$id]}[libNAME,libMAJOR,libMINOR,libLANGUAGE];
+    $tlib = Win32::OLE::Const->LoadRegTypeLib(@def);
+
+    # Make a sorted list of all type information
+    undef @Type;
+    for (my $index = 0; $index < $tlib->_GetTypeInfoCount; ++$index) {
+	my $tinfo = $tlib->_GetTypeInfo($index);
+	my $doc  = $tinfo->_GetDocumentation;
+	my $attr = $tinfo->_GetTypeAttr;
+	next if $attr->{wTypeFlags} & TYPEFLAG_FRESTRICTED;
+	next unless $icon[$attr->{typekind}];
+	push @Type, [$tlib, $tinfo, $doc, $attr];
+    }
+
+    # Invalidate previous selections and redraw type table
+    undef $Type; undef $Member; undef @Member;
+    $frame{Libraries}->createTypeTable;
+}
+
+sub showLibraryInfo {
+    # Insert type library information into footer frame
+    my $doc = $tlib->_GetDocumentation;
+    ($HelpFile,$HelpContext) = ($doc->{HelpFile}, $doc->{HelpContext});
+    my $html = '';
+    my $opaque = -f $HelpFile ? '' : 'filter:alpha(opacity=50);';
+    $html .= <<HTML if $HelpFile;
+	<IMG SRC="icons/Help.png" WIDTH=16 HEIGHT=16
+	 STYLE="$opaque cursor:hand"
+	 onclick="parent.Libraries.showHelpfile">&nbsp;
+HTML
+    $html .= "Library <B>$doc->{Name}</B>";
+    $html .= "<P CLASS=Indented>$doc->{HelpFile}" if HelpFile;
+    $html .= "<P CLASS=Indented>$doc->{DocString}" if $doc->{DocString};
+    $frame{Footer}->document->body->{innerHTML} = $html;
+}
+
+# TYPEKIND sort order:
+my @tkorder;
+$tkorder[TKIND_COCLASS]  = -4; # Treat COCLASS/DISPATCH the same for sorting
+$tkorder[TKIND_DISPATCH] = -4;
+$tkorder[TKIND_MODULE]   = -3;
+$tkorder[TKIND_TYPE]     = -2;
+$tkorder[TKIND_ENUM]     = -1;
+
+sub createTypeTable {
+    $frame{Footer}->document->body->{innerText} = '';
+    $frame{Members}->document->body->{innerText} = '';
+    $frame{Types}->document->body->{innerText} = '';
+
+    # Make a sorted index of visible Types
+    my @Index = sort {
+	my ($a,$b) = @Type[$a,$b];
+	my $cmp = 0;
+	if ($GroupByType) {
+	    my $ranka = $tkorder[$a->[typeATTR]->{typekind}] || 0;
+	    my $rankb = $tkorder[$b->[typeATTR]->{typekind}] || 0;
+	    $cmp = $ranka <=> $rankb;
+	}
+	$cmp || strcmp($a->[typeDOC]->{Name}, $b->[typeDOC]->{Name});
+    } grep {
+	$ShowHidden || !($Type[$_]->[typeATTR]->{wTypeFlags} & TYPEFLAG_FHIDDEN)
+    } 0..@Type-1;
+
+    # Create a table of available types
+    my $html = "<TABLE>\n";
+    foreach (0..@Index-1) {
+	my $id = $Index[$_];
+	my $icon = $icon[$Type[$id]->[typeATTR]->{typekind}];
+	my $src = $icon ? qq(SRC="icons/$icon.png") : '';
+	my $typeflags = $Type[$id]->[typeATTR]->{wTypeFlags};
+	my $hidden = ($typeflags & TYPEFLAG_FHIDDEN) ? 'Hidden' : '';
+	$html .= <<HTML;
+	    <TR><TD NOWRAP>
+		<IMG $src WIDTH=16 HEIGHT=16>
+	        <SPAN ID=TYPE_$id CLASS=Inactive$hidden
+		    onmouseover="parent.Libraries.rollon('Types')"
+		    onmouseout="parent.Libraries.rolloff('Types')"
+		    onclick="parent.Libraries.selectType">
+		$Type[$id]->[typeDOC]->{Name}</SPAN>
+	    </TD></TR>
+HTML
+    }
+    $html .= "</TABLE>";
+    $frame{Types}->document->body->{innerHTML} = $html;
+
+    # Make sure the previous selection is maintained
+    if (defined $Type) {
+	my $type = $frame{Types}->document->all("TYPE_$Type");
+	if (ref $type) {
+	    $type->style->{fontWeight} = 'bold';
+	    $type->ScrollIntoView;
+	}
+	else {
+	    undef $Type; undef $Member; undef @Member;
+	}
+    }
+    $frame{Libraries}->createMemberTable;
+}
+
+# Select a type and display the members
+# ======================================
+
+my $Typeinfo;
+
+sub selectType {
+    my ($id) = ($frame{Types}->event->srcElement->id =~ /^TYPE_(\d+)/);
+    return unless defined $id;
+
+    # Change selection marker
+    $frame{Types}->document->all("TYPE_$Type")->style->{fontWeight} = 'normal'
+	if defined $Type;
+    $Type = $id;
+    $frame{Types}->document->all("TYPE_$Type")->style->{fontWeight} = 'bold';
+
+    undef @Member;
+    my $tkind = $Type[$Type]->[typeATTR]->{typekind};
+    if ($tkind == TKIND_COCLASS) {
+	my ($dispatch,$event);
+	my $tinfo = $Type[$Type]->[typeINFO];
+	for my $impltype (0 .. $Type[$Type]->[typeATTR]->{cImplTypes}-1) {
+	    my $tflags = $tinfo->_GetImplTypeFlags($impltype);
+	    next unless $tflags & IMPLTYPEFLAG_FDEFAULT;
+	    ($tflags & IMPLTYPEFLAG_FSOURCE ? $event : $dispatch) =
+	      $tinfo->_GetImplTypeInfo($impltype);
+	}
+	$Typeinfo = $dispatch;
+	$frame{Libraries}->addFunctions();
+	$Typeinfo = $event;
+	$frame{Libraries}->addFunctions('Event');
+    }
+    else {
+	$Typeinfo = $Type[$Type]->[typeINFO];
+	$frame{Libraries}->addFunctions;
+	$frame{Libraries}->addVariables;
+    }
+
+    # Invalidate previous selections and redraw type table
+    undef $Member;
+    $frame{Libraries}->createMemberTable;
+}
+
+sub addFunctions {
+    my $event = shift;
+    return unless defined $Typeinfo;
+    my $attr = $Typeinfo->_GetTypeAttr;
+    my %property;
+    for my $func (0 .. $attr->{cFuncs}-1) {
+	my $desc = $Typeinfo->_GetFuncDesc($func);
+	my $doc = $Typeinfo->_GetDocumentation($desc->{memid});
+	my $invkind = $desc->{invkind};
+	next if $event && $invkind != INVOKE_FUNC;
+
+	if ($invkind != INVOKE_FUNC && $property{$doc->{Name}}) {
+	    if ($invkind & (INVOKE_PROPERTYPUT | INVOKE_PROPERTYPUTREF)) {
+		$Member[$property{$doc->{Name}}]->[membREADONLY] = 0;
+	    }
+	}
+	else {
+	    $property{$doc->{Name}} = @Member if $invkind != INVOKE_FUNC;
+	    my $readonly = $invkind == INVOKE_PROPERTYGET;
+	    my $icon = $invkind == INVOKE_FUNC ? ($event||'Function') : 'Property';
+	    next if $desc->{wFuncFlags} & FUNCFLAG_FRESTRICTED;
+	    my $hidden = $desc->{wFuncFlags} & FUNCFLAG_FHIDDEN;
+	    push @Member, [$Typeinfo, $desc, $doc, $icon, $readonly, $hidden];
+	}
+    }
+}
+
+sub addVariables {
+    return unless defined $Typeinfo;
+    my $attr = $Typeinfo->_GetTypeAttr;
+    for my $var (0 .. $attr->{cVars}-1) {
+	my $desc = $Typeinfo->_GetVarDesc($var);
+	next if $desc->{wVarFlags} & VARFLAG_FRESTRICTED;
+	my $doc = $Typeinfo->_GetDocumentation($desc->{memid});
+	push @Member, [$Typeinfo, $desc, $doc, 'Const'];
+    }
+}
+
+sub showTypeInfo {
+    return $frame{Libraries}->showLibraryInfo unless defined $Type;
+
+    # Insert type information into footer frame
+    my $doc = $Type[$Type]->[typeDOC];
+    ($HelpFile,$HelpContext) = ($doc->{HelpFile}, $doc->{HelpContext});
+    my $html = '';
+    $html .= <<HTML if $doc->{HelpFile};
+	<IMG SRC="icons/Help.png" WIDTH=16 HEIGHT=16
+	 STYLE="cursor:hand" onclick="parent.Libraries.showHelpfile">&nbsp;
+HTML
+    my $type = $icon[$Type[$Type]->[typeATTR]->{typekind}] || '???';
+    $html .= "$type <B>$doc->{Name}</B>";
+    #$html .= "<P CLASS=Indented>$doc->{HelpFile}" if $doc->{HelpFile};
+    $html .= "<P CLASS=Indented>$doc->{DocString}" if $doc->{DocString};
+    $frame{Footer}->document->body->{innerHTML} = $html;
+}
+
+# member kind sort order
+my %ekorder;
+$ekorder{Property} = -4;
+$ekorder{Method}   = -3;
+$ekorder{Event}    = -2;
+$ekorder{Const}    = -1;
+
+sub createMemberTable {
+    $frame{Footer}->document->body->{innerText} = '';
+    $frame{Members}->document->body->{innerText} = '';
+
+    # Make a sorted index of visible Types
+    my @Index = sort {
+	my ($a,$b) = @Member[$a,$b];
+	my $cmp = 0;
+	if ($GroupByType) {
+	    my $ranka = $ekorder{$a->[membICON]} || 0;
+	    my $rankb = $ekorder{$b->[membICON]} || 0;
+	    $cmp = $ranka <=> $rankb;
+	}
+	$cmp || strcmp($a->[membDOC]->{Name}, $b->[membDOC]->{Name});
+    } grep {
+	$ShowHidden || !$Member[$_]->[membHIDDEN]
+    } 0..@Member-1;
+
+    # Create a table of all members
+    my $html = "<TABLE>\n";
+    foreach (0..@Index-1) {
+	my $id = $Index[$_];
+	my $hidden = $Member[$id]->[membHIDDEN] ? 'Hidden' : '';
+	my ($default,$adjust) = ('','');
+	if ($Member[$id]->[membDESC]->{memid} == 0) {
+	    $default .= '<IMG SRC="icons/Default.png" WIDTH=5 HEIGHT=5 ';
+	    $default .= 'STYLE="position:relative;left:-16;top:-11;z-index:1">';
+	    $adjust  .= 'STYLE="position:relative;left:-5"';
+	}
+	$html .= <<HTML;
+	    <TR><TD NOWRAP>
+		<IMG SRC="icons/$Member[$id]->[membICON].png"
+                    WIDTH=16 HEIGHT=16>$default
+	        <SPAN ID=MEMBER_$id $adjust CLASS=Inactive$hidden
+		    onmouseover="parent.Libraries.rollon('Members')"
+		    onmouseout="parent.Libraries.rolloff('Members')"
+		    onclick="parent.Libraries.selectMember">
+		$Member[$id]->[membDOC]->{Name}</SPAN>
+	    </TD></TR>
+HTML
+    }
+    $html .= "</TABLE>";
+    $frame{Members}->document->body->{innerHTML} = $html;
+
+    # Make sure the previous selection is maintained
+    if (defined $Member) {
+	my $member = $frame{Members}->document->all("MEMBER_$Member");
+	if (ref $member) {
+	    $member->style->{fontWeight} = 'bold';
+	    $member->scrollIntoView;
+	}
+	else {
+	    undef $Member;
+	}
+    }
+    $frame{Libraries}->showMemberInfo;
+}
+
+# Select a member
+# ===============
+
+sub selectMember {
+    my ($id) = ($frame{Members}->event->srcElement->id =~ /^MEMBER_(\d+)/);
+    return unless defined $id;
+
+    # Change selection marker
+    $frame{Members}->document->all("MEMBER_$Member")->style->{fontWeight} = 'normal'
+	if defined $Member;
+    $Member = $id;
+    $frame{Members}->document->all("MEMBER_$Member")->style->{fontWeight} = 'bold';
+
+    # Show member information
+    $frame{Libraries}->showMemberInfo;
+}
+
+# Insert member information into footer frame
+# ============================================
+
+sub showMemberInfo {
+    return $frame{Libraries}->showTypeInfo unless defined $Member;
+
+    my $doc = $Member[$Member]->[membDOC];
+    ($HelpFile,$HelpContext) = ($doc->{HelpFile}, $doc->{HelpContext});
+    my $html = '';
+    $html .= <<HTML if $doc->{HelpFile};
+	<IMG SRC="icons/Help.png" WIDTH=16 HEIGHT=16
+	 STYLE="cursor:hand" onclick="parent.Libraries.showHelpfile">
+HTML
+
+    my $type = $Member[$Member]->[membICON];
+    my $desc = $Member[$Member]->[membDESC];
+    my $decl = '';
+
+    # Function declaration
+    if (exists $desc->{wFuncFlags}) {
+	my $tinfo = $Member[$Member]->[membTYPE];
+	# Parameter names
+	my $names = $tinfo->_GetNames($desc->{memid}, $desc->{cParams}+1);
+	shift @$names;
+
+	# Decode function arguments
+	my @arg;
+	for my $param (0 .. $desc->{cParams}-1) {
+	    my $elem = $desc->{rgelemdescParam}->[$param];
+	    my $arg  = ElemDesc($elem);
+	    if (my $name = $names->[$param]) {
+		$arg = $arg eq 'Variant' ? $name : "$name As $arg";
+	    }
+	    if (exists $elem->{varDefaultValue}) {
+		my $default = $elem->{varDefaultValue};
+		# Lookup symbolic name in enum definition
+		$Typeinfo = $elem->{vt}->[-1];
+		$default = $frame{Libraries}->getConstantName($default)
+		  if ref $Typeinfo;
+		$arg .= " = $default" if $default ne '0';
+	    }
+	    $arg = "[$arg]" if $elem->{wParamFlags} & PARAMFLAG_FOPT;
+	    push @arg, $arg;
+	}
+	$decl = sprintf "<B>(</B>%s<B>)</B>", join(', ', @arg)
+	  if @arg || $type ne 'Property';
+
+	# Return type
+	my $retval = ElemDesc($desc->{elemdescFunc});
+	$type = 'Sub' if $type eq 'Function' && $retval eq 'Void';
+	$retval = '' if $retval eq 'Void';
+	$retval = '' if $retval eq 'Variant' && $type eq 'Function';
+	$decl .= " As $retval" if $retval;
+    }
+    # Variable declaration
+    elsif (exists $desc->{wVarFlags}) {
+	my $value = $desc->{varValue};
+	if ($value =~ /^-?\d+$/) {
+	    $decl = " = $value";
+	    $decl .= sprintf " (0x%X)", $value if $value < 0 || $value > 15;
+	}
+	else {
+	    $decl = " = \"$value\"";
+	}
+    }
+
+    $html .= "$type <B>$doc->{Name}</B>$decl";
+    #$html .= "<P CLASS=Indented>$doc->{HelpFile}" if $doc->{HelpFile};
+    $html .= "<P CLASS=Indented>readonly" if $Member[$Member]->[membREADONLY];
+    $html .= "<P CLASS=Indented>$doc->{DocString}" if $doc->{DocString};
+    $frame{Footer}->document->body->{innerHTML} = $html;
+}
+
+sub getConstantName {
+    my $value = shift;
+    # XXX only int constants supported right now
+    return $value unless $value =~ /^-?\d+$/;
+
+    my $attr = $Typeinfo->_GetTypeAttr;
+    for my $var (0 .. $attr->{cVars}-1) {
+	my $desc = $Typeinfo->_GetVarDesc($var);
+	next if $desc->{wVarFlags} & VARFLAG_FRESTRICTED;
+	return $Typeinfo->_GetDocumentation($desc->{memid})->{Name}
+	  if $value == $desc->{varValue};
+    }
+    # sorry, not found (this is a typelib bug!)
+    return $value;
+}
+
+my @vt;
+$vt[VT_BSTR] = 'String';
+$vt[VT_BOOL] = 'Boolean';
+$vt[VT_I4] = 'Long';
+$vt[VT_R8] = 'Double';
+$vt[VT_VARIANT] = 'Variant';
+$vt[VT_VOID] = 'Void';
+
+sub ElemDesc {
+    my $desc = shift;
+    my $vt = $desc->{vt}->[-1];
+    if (ref $vt) {
+	return $vt->_GetDocumentation(-1)->{Name};
+    }
+    return $vt[$vt] || $VT[$vt];
+}
+
+
+</SCRIPT>
+</BODY>
+</HTML>

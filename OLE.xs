@@ -337,6 +337,49 @@ class EventSink : public IDispatch
 #endif
 };
 
+/* Forwarder class */
+class Forwarder : public IDispatch
+{
+ public:
+    // IUnknown methods
+    STDMETHOD(QueryInterface)(REFIID riid, LPVOID *ppvObj);
+    STDMETHOD_(ULONG, AddRef)(void);
+    STDMETHOD_(ULONG, Release)(void);
+
+    // IDispatch methods
+    STDMETHOD(GetTypeInfoCount)(UINT *pctinfo);
+    STDMETHOD(GetTypeInfo)(
+      UINT itinfo,
+      LCID lcid,
+      ITypeInfo **pptinfo);
+    STDMETHOD(GetIDsOfNames)(
+      REFIID riid,
+      OLECHAR **rgszNames,
+      UINT cNames,
+      LCID lcid,
+      DISPID *rgdispid);
+    STDMETHOD(Invoke)(
+      DISPID dispidMember,
+      REFIID riid,
+      LCID lcid,
+      WORD wFlags,
+      DISPPARAMS *pdispparams,
+      VARIANT *pvarResult,
+      EXCEPINFO *pexcepinfo,
+      UINT *puArgErr);
+
+    Forwarder(CPERLarg_ HV *stash, SV *method);
+    ~Forwarder(void);
+
+ private:
+    int m_refcount;
+    HV *m_stash;
+    SV *m_method;
+#ifdef PERL_OBJECT
+    CPERLproto m_PERL_OBJECT_THIS;
+#endif
+};
+
 /* forward declarations */
 HRESULT SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
 			   BOOL bByRefObj=FALSE);
@@ -1976,6 +2019,116 @@ Dummy(21) Dummy(22) Dummy(23) Dummy(24) Dummy(25)
 
 //------------------------------------------------------------------------
 
+Forwarder::Forwarder(CPERLarg_ HV *stash, SV *method)
+{
+    m_stash = stash; // XXX refcount?
+    m_method = newSVsv(method);
+    m_refcount = 1;
+#ifdef PERL_OBJECT
+    m_PERL_OBJECT_THIS = PERL_OBJECT_THIS;
+#endif
+}
+
+Forwarder::~Forwarder(void)
+{
+#ifdef PERL_OBJECT
+    CPERLarg = m_PERL_OBJECT_THIS;
+#endif
+    SvREFCNT_dec(m_method);
+}
+
+STDMETHODIMP
+Forwarder::QueryInterface(REFIID iid, void **ppv)
+{
+    if (iid == IID_IUnknown || iid == IID_IDispatch) {
+	*ppv = this;
+	AddRef();
+	return S_OK;
+    }
+    *ppv = NULL;
+    return E_NOINTERFACE;
+}
+
+STDMETHODIMP_(ULONG)
+Forwarder::AddRef(void)
+{
+    return ++m_refcount;
+}
+
+STDMETHODIMP_(ULONG)
+Forwarder::Release(void)
+{
+    if (--m_refcount)
+	return m_refcount;
+    delete this;
+    return 0;
+}
+
+STDMETHODIMP
+Forwarder::GetTypeInfoCount(UINT *pctinfo)
+{
+    *pctinfo = 0;
+    return S_OK;
+}
+
+STDMETHODIMP
+Forwarder::GetTypeInfo(UINT itinfo, LCID lcid, ITypeInfo **pptinfo)
+{
+    *pptinfo = NULL;
+    return DISP_E_BADINDEX;
+}
+
+STDMETHODIMP
+Forwarder::GetIDsOfNames(
+    REFIID riid,
+    OLECHAR **rgszNames,
+    UINT cNames,
+    LCID lcid,
+    DISPID *rgdispid)
+{
+    // XXX Set all DISPIDs to DISPID_UNKNOWN
+    return DISP_E_UNKNOWNNAME;
+}
+
+STDMETHODIMP
+Forwarder::Invoke(
+    DISPID dispidMember,
+    REFIID riid,
+    LCID lcid,
+    WORD wFlags,
+    DISPPARAMS *pdispparams,
+    VARIANT *pvarResult,
+    EXCEPINFO *pexcepinfo,
+    UINT *puArgErr)
+{
+#ifdef PERL_OBJECT
+    CPERLarg = m_PERL_OBJECT_THIS;
+#endif
+
+    DBG(("Forwarder::Invoke dispid=%d args=%d\n",
+	 dispidMember, pdispparams->cArgs));
+    dSP;
+    ENTER ;
+    SAVETMPS ;
+    PUSHMARK(sp);
+    for (int i=0; i < pdispparams->cArgs; ++i) {
+	VARIANT *pVariant = &pdispparams->rgvarg[pdispparams->cArgs-i-1];
+	DBG(("   Arg %d vt=0x%04x\n", i, V_VT(pVariant)));
+	SV *sv = sv_newmortal();
+	// XXX Check return code
+	SetSVFromVariantEx(THIS_ pVariant, sv, m_stash, TRUE);
+	XPUSHs(sv);
+    }
+    PUTBACK;
+    perl_call_sv(m_method, G_DISCARD);
+    SPAGAIN;
+    FREETMPS ;
+    LEAVE ;
+    return S_OK;
+}
+
+//------------------------------------------------------------------------
+
 SV *
 SetSVFromGUID(CPERLarg_ REFGUID rguid)
 {
@@ -3476,6 +3629,26 @@ PPCODE:
 }
 
 void
+Forward(self,method)
+    SV *self
+    SV *method
+PPCODE:
+{
+    if (CallObjectMethod(THIS_ mark, ax, items, "Forward"))
+	return;
+
+    if (!SvROK(method) || SvTYPE(SvRV(method)) != SVt_PVCV) {
+	warn("Win32::OLE->Forward: method must be a CODE ref");
+	XSRETURN_EMPTY;
+    }
+
+    HV *stash = gv_stashsv(self, TRUE);
+    IDispatch *pDispatch = new Forwarder(THIS_ stash, method);
+    ST(0) = CreatePerlObject(THIS_ stash, pDispatch, NULL);
+    XSRETURN(1);
+}
+
+void
 GetActiveObject(...)
 PPCODE:
 {
@@ -3784,14 +3957,74 @@ PPCODE:
 
     // Interfacename specified?
     if (items > 3) {
-	char *pszItf = SvPV_nolen(ST(3));
-	if (isalpha(pszItf[0]))
-	    hr = FindIID(THIS_ pObj, pszItf, &iid, &pTypeInfo, cp, lcid);
-	else {
-	    OLECHAR Buffer[OLE_BUF_SIZ];
-	    OLECHAR *pBuffer = GetWideChar(THIS_ pszItf, Buffer, OLE_BUF_SIZ, cp);
-	    hr = IIDFromString(pBuffer, &iid);
-	    ReleaseBuffer(THIS_ pBuffer, Buffer);
+	SV *itf = ST(3);
+	if (sv_isobject(itf) && sv_derived_from(itf, szWINOLETYPEINFO)) {
+	    WINOLETYPEINFOOBJECT *pObj = GetOleTypeInfoObject(THIS_ itf);
+	    if (!pObj)
+		XSRETURN_EMPTY;
+
+	    if (pObj->pTypeAttr->typekind == TKIND_DISPATCH) {
+		iid = (IID)pObj->pTypeAttr->guid;
+		pTypeInfo = pObj->pTypeInfo;
+		pTypeInfo->AddRef();
+	    }
+	    else if (pObj->pTypeAttr->typekind == TKIND_COCLASS) {
+		// Enumerate all implemented types of the COCLASS
+		for (UINT i=0; i < pObj->pTypeAttr->cImplTypes; i++) {
+		    int iFlags;
+		    hr = pObj->pTypeInfo->GetImplTypeFlags(i, &iFlags);
+		    DBG(("GetImplTypeFlags: hr=0x%08x i=%d iFlags=%d\n", hr, i, iFlags));
+		    if (FAILED(hr))
+			continue;
+
+		    // looking for the [default] [source]
+		    // we just hope that it is a dispinterface :-)
+		    if ((iFlags & IMPLTYPEFLAG_FDEFAULT) &&
+			(iFlags & IMPLTYPEFLAG_FSOURCE))
+		    {
+			HREFTYPE hRefType = NULL;
+			hr = pObj->pTypeInfo->GetRefTypeOfImplType(i, &hRefType);
+			DBG(("GetRefTypeOfImplType: hr=0x%08x\n", hr));
+			if (FAILED(hr))
+			    continue;
+			hr = pObj->pTypeInfo->GetRefTypeInfo(hRefType, &pTypeInfo);
+			DBG(("GetRefTypeInfo: hr=0x%08x\n", hr));
+			if (SUCCEEDED(hr))
+			    break;
+		    }
+		}
+
+		// Now that would be a bad surprise, if we didn't find it, wouldn't it?
+		if (!pTypeInfo) {
+		    if (SUCCEEDED(hr))
+			hr = E_UNEXPECTED;
+		}
+		else {
+		    // Determine IID of default source interface
+		    TYPEATTR *pTypeAttr;
+		    hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+		    if (SUCCEEDED(hr)) {
+			iid = pTypeAttr->guid;
+			pTypeInfo->ReleaseTypeAttr(pTypeAttr);
+		    }
+		    else
+			pTypeInfo->Release();
+		}
+	    }
+	    else {
+		XSRETURN_EMPTY; /* set hr instead XXX error message */
+	    }
+	}
+	else { /* interface _not_ a Win32::OLE::TypeInfo object */
+	    char *pszItf = SvPV_nolen(itf);
+	    if (isalpha(pszItf[0]))
+		hr = FindIID(THIS_ pObj, pszItf, &iid, &pTypeInfo, cp, lcid);
+	    else {
+		OLECHAR Buffer[OLE_BUF_SIZ];
+		OLECHAR *pBuffer = GetWideChar(THIS_ pszItf, Buffer, OLE_BUF_SIZ, cp);
+		hr = IIDFromString(pBuffer, &iid);
+		ReleaseBuffer(THIS_ pBuffer, Buffer);
+	    }
 	}
     }
     else
@@ -4093,81 +4326,73 @@ PPCODE:
 MODULE = Win32::OLE		PACKAGE = Win32::OLE::Const
 
 void
-_Load(classid,major,minor,locale,typelib,codepage,caller)
+_LoadRegTypeLib(classid,major,minor,locale,typelib,codepage)
     SV *classid
     IV major
     IV minor
     SV *locale
     SV *typelib
     SV *codepage
-    SV *caller
 PPCODE:
 {
     ITypeLib *pTypeLib;
+    TLIBATTR *pTLibAttr;
     CLSID clsid;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     HRESULT hr;
-    LCID lcid = lcidDefault;
-    UINT cp = cpDefault;
+    LCID lcid = SvIOK(locale) ? SvIV(locale) : lcidDefault;
+    UINT cp = SvIOK(codepage) ? SvIV(codepage) : cpDefault;
     HV *stash = gv_stashpv(szWINOLE, TRUE);
-    HV *hv;
     unsigned int count;
 
     Initialize(THIS_ stash);
     SetLastOleError(THIS_ stash);
 
-    if (SvIOK(locale))
-	lcid = SvIV(locale);
+    char *pszBuffer = SvPV_nolen(classid);
+    pBuffer = GetWideChar(THIS_ pszBuffer, Buffer, OLE_BUF_SIZ, cp);
+    hr = CLSIDFromString(pBuffer, &clsid);
+    ReleaseBuffer(THIS_ pBuffer, Buffer);
+    if (CheckOleError(THIS_ stash, hr))
+	XSRETURN_EMPTY;
 
-    if (SvIOK(codepage))
-	cp = SvIV(codepage);
-
-    if (sv_derived_from(classid, szWINOLE)) {
-	/* Get containing typelib from IDispatch interface */
-	ITypeInfo *pTypeInfo;
-	WINOLEOBJECT *pObj = GetOleObject(THIS_ classid);
-	if (!pObj)
-	    XSRETURN_EMPTY;
-
-	stash = SvSTASH(pObj->self);
-	hr = pObj->pDispatch->GetTypeInfoCount(&count);
-	if (CheckOleError(THIS_ stash, hr) || count == 0)
-	    XSRETURN_EMPTY;
-
-	lcid = QueryPkgVar(THIS_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-	cp = QueryPkgVar(THIS_ stash, CP_NAME, CP_LEN, cpDefault);
-
-	hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
-	if (CheckOleError(THIS_ stash, hr))
-	    XSRETURN_EMPTY;
-
-	hr = pTypeInfo->GetContainingTypeLib(&pTypeLib, &count);
-	pTypeInfo->Release();
-	if (CheckOleError(THIS_ stash, hr))
-	    XSRETURN_EMPTY;
-    }
-    else {
-	/* try to load registered typelib by classid, version and lcid */
-	char *pszBuffer = SvPV_nolen(classid);
+    hr = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
+    if (FAILED(hr) && SvPOK(typelib)) {
+	/* typelib not registerd, try to read from file "typelib" */
+	pszBuffer = SvPV_nolen(typelib);
 	pBuffer = GetWideChar(THIS_ pszBuffer, Buffer, OLE_BUF_SIZ, cp);
-	hr = CLSIDFromString(pBuffer, &clsid);
+	hr = LoadTypeLibEx(pBuffer, REGKIND_NONE, &pTypeLib);
 	ReleaseBuffer(THIS_ pBuffer, Buffer);
-
-	if (CheckOleError(THIS_ stash, hr))
-	    XSRETURN_EMPTY;
-
-	hr = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
-	if (FAILED(hr) && SvPOK(typelib)) {
-	    /* typelib not registerd, try to read from file "typelib" */
-	    pszBuffer = SvPV_nolen(typelib);
-	    pBuffer = GetWideChar(THIS_ pszBuffer, Buffer, OLE_BUF_SIZ, cp);
-	    hr = LoadTypeLib(pBuffer, &pTypeLib);
-	    ReleaseBuffer(THIS_ pBuffer, Buffer);
-	}
-	if (CheckOleError(THIS_ stash, hr))
-	    XSRETURN_EMPTY;
     }
+    if (CheckOleError(THIS_ stash, hr))
+	XSRETURN_EMPTY;
+
+    hr = pTypeLib->GetLibAttr(&pTLibAttr);
+    if (FAILED(hr)) {
+	pTypeLib->Release();
+	ReportOleError(THIS_ stash, hr);
+	XSRETURN_EMPTY;
+    }
+
+    ST(0) = sv_2mortal(CreateTypeLibObject(THIS_ pTypeLib, pTLibAttr));
+    XSRETURN(1);
+}
+
+void
+_Constants(typelib,caller)
+    SV *typelib
+    SV *caller
+PPCODE:
+{
+    HRESULT hr;
+    UINT cp = cpDefault;
+    HV *stash = gv_stashpv(szWINOLE, TRUE);
+    HV *hv;
+    unsigned int count;
+
+    WINOLETYPELIBOBJECT *pObj = GetOleTypeLibObject(THIS_ typelib);
+    if (!pObj)
+	XSRETURN_EMPTY;
 
     if (SvOK(caller)) {
 	/* we'll define inlineable functions returning a const */
@@ -4181,12 +4406,12 @@ PPCODE:
     }
 
     /* loop through all objects in type lib */
-    count = pTypeLib->GetTypeInfoCount();
+    count = pObj->pTypeLib->GetTypeInfoCount();
     for (int index=0 ; index < count ; ++index) {
 	ITypeInfo *pTypeInfo;
 	TYPEATTR  *pTypeAttr;
 
-	hr = pTypeLib->GetTypeInfo(index, &pTypeInfo);
+	hr = pObj->pTypeLib->GetTypeInfo(index, &pTypeInfo);
 	if (CheckOleError(THIS_ stash, hr))
 	    continue;
 
@@ -4240,9 +4465,6 @@ PPCODE:
 	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
 	pTypeInfo->Release();
     }
-
-    pTypeLib->Release();
-
     XSRETURN(1);
 }
 
@@ -4326,7 +4548,7 @@ PPCODE:
 		if (err == ERROR_SUCCESS && cbFile > 1) {
 		    AV *av = newAV();
 		    av_push(av, newSVpv(szClsid, cbClsid));
-		    av_push(av, newSVpv(szTitle, cbTitle));
+		    av_push(av, newSVpv(szTitle, cbTitle-1));
 		    av_push(av, newSVpv(szVersion, cbVersion));
 		    av_push(av, newSVpv(szLangid, cbLangid));
 		    av_push(av, newSVpv(szFile, cbFile-1));
@@ -5536,36 +5758,50 @@ PPCODE:
 MODULE = Win32::OLE		PACKAGE = Win32::OLE::TypeLib
 
 void
-_new(self,object)
+new(self,object)
     SV *self
     SV *object
 PPCODE:
 {
-    ITypeLib  *pTypeLib;
-    ITypeInfo *pTypeInfo;
-    TLIBATTR  *pTLibAttr;
+    HRESULT hr;
+    HV *stash = Nullhv;
+    ITypeLib *pTypeLib;
+    TLIBATTR *pTLibAttr;
 
-    // XXX object should be a typelib, not a Win32::OLE object!
+    if (sv_isobject(object) && sv_derived_from(object, szWINOLE)) {
+	WINOLEOBJECT *pOleObj = GetOleObject(THIS_ object);
+	if (!pOleObj)
+	    XSRETURN_EMPTY;
 
-    WINOLEOBJECT *pOleObj = GetOleObject(THIS_ object);
-    if (!pOleObj)
-        XSRETURN_EMPTY;
+	unsigned int count;
+	hr = pOleObj->pDispatch->GetTypeInfoCount(&count);
+	stash = SvSTASH(pOleObj->self);
+	if (CheckOleError(THIS_ stash, hr) || count == 0)
+	    XSRETURN_EMPTY;
 
-    unsigned int count;
-    HRESULT hr = pOleObj->pDispatch->GetTypeInfoCount(&count);
-    HV *stash = SvSTASH(pOleObj->self);
-    if (CheckOleError(THIS_ stash, hr) || count == 0)
-        XSRETURN_EMPTY;
+	ITypeInfo *pTypeInfo;
+	hr = pOleObj->pDispatch->GetTypeInfo(0, lcidDefault, &pTypeInfo);
+	if (CheckOleError(THIS_ stash, hr))
+	    XSRETURN_EMPTY;
 
-    hr = pOleObj->pDispatch->GetTypeInfo(0, lcidDefault, &pTypeInfo);
-    if (CheckOleError(THIS_ stash, hr))
-        XSRETURN_EMPTY;
+	unsigned int index;
+	hr = pTypeInfo->GetContainingTypeLib(&pTypeLib, &index);
+	pTypeInfo->Release();
+	if (CheckOleError(THIS_ stash, hr))
+	    XSRETURN_EMPTY;
+    }
+    else {
+	stash = GetWin32OleStash(THIS_ self);
+	UINT cp = QueryPkgVar(THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
-    unsigned int index;
-    hr = pTypeInfo->GetContainingTypeLib(&pTypeLib, &index);
-    pTypeInfo->Release();
-    if (CheckOleError(THIS_ stash, hr))
-        XSRETURN_EMPTY;
+	char *pszBuffer = SvPV_nolen(object);
+	OLECHAR Buffer[OLE_BUF_SIZ];
+	OLECHAR *pBuffer = GetWideChar(THIS_ pszBuffer, Buffer, OLE_BUF_SIZ, cp);
+	hr = LoadTypeLibEx(pBuffer, REGKIND_NONE, &pTypeLib);
+	ReleaseBuffer(THIS_ pBuffer, Buffer);
+	if (CheckOleError(THIS_ stash, hr))
+	    XSRETURN_EMPTY;
+    }
 
     hr = pTypeLib->GetLibAttr(&pTLibAttr);
     if (FAILED(hr)) {
@@ -5683,6 +5919,76 @@ PPCODE:
     XSRETURN(1);
 }
 
+void
+GetTypeInfo(self,name,...)
+    SV *self
+    SV *name
+PPCODE:
+{
+    WINOLETYPELIBOBJECT *pObj = GetOleTypeLibObject(THIS_ self);
+    if (!pObj)
+	XSRETURN_EMPTY;
+
+    ITypeInfo *pTypeInfo;
+    TYPEATTR  *pTypeAttr;
+
+    HV *olestash = GetWin32OleStash(THIS_ self);
+
+    if (SvIOK(name)) {
+	HRESULT hr = pObj->pTypeLib->GetTypeInfo(SvIV(name), &pTypeInfo);
+	if (CheckOleError(THIS_ olestash, hr))
+	    XSRETURN_EMPTY;
+
+	hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+	if (FAILED(hr)) {
+	    pTypeInfo->Release();
+	    ReportOleError(THIS_ olestash, hr);
+	    XSRETURN_EMPTY;
+	}
+
+	ST(0) = sv_2mortal(CreateTypeInfoObject(THIS_ pTypeInfo, pTypeAttr));
+	XSRETURN(1);
+    }
+
+    UINT cp = QueryPkgVar(THIS_ olestash, CP_NAME, CP_LEN, cpDefault);
+    TYPEKIND tkind = items > 2 ? (TYPEKIND)SvIV(ST(2)) : TKIND_MAX;
+    char *pszName = SvPV_nolen(name);
+    int count = pObj->pTypeLib->GetTypeInfoCount();
+    for (int index = 0; index < count; ++index) {
+	HRESULT hr = pObj->pTypeLib->GetTypeInfo(index, &pTypeInfo);
+	if (CheckOleError(THIS_ olestash, hr))
+	    XSRETURN_EMPTY;
+
+	BSTR bstrName;
+	hr = pTypeInfo->GetDocumentation(-1, &bstrName, NULL, NULL, NULL);
+	char szStr[OLE_BUF_SIZ];
+	char *pszStr = GetMultiByte(THIS_ bstrName, szStr, sizeof(szStr), cp);
+	int equal = strEQ(pszStr, pszName);
+	ReleaseBuffer(THIS_ pszStr, szStr);
+	SysFreeString(bstrName);
+	if (!equal) {
+	    pTypeInfo->Release();
+	    continue;
+	}
+
+	hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+	if (FAILED(hr)) {
+	    pTypeInfo->Release();
+	    ReportOleError(THIS_ olestash, hr);
+	    XSRETURN_EMPTY;
+	}
+
+	if (tkind == TKIND_MAX || tkind == pTypeAttr->typekind) {
+	    ST(0) = sv_2mortal(CreateTypeInfoObject(THIS_ pTypeInfo, pTypeAttr));
+	    XSRETURN(1);
+	}
+
+	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
+	pTypeInfo->Release();
+    }
+    XSRETURN_EMPTY;
+}
+
 ##############################################################################
 
 MODULE = Win32::OLE		PACKAGE = Win32::OLE::TypeInfo
@@ -5739,7 +6045,7 @@ PPCODE:
 }
 
 void
-_GetContainingTypeLib(self)
+GetContainingTypeLib(self)
     SV *self
 PPCODE:
 {

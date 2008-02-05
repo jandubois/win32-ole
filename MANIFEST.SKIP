@@ -1,0 +1,10 @@
+[#~]$
+\.bak$
+\.tar\.gz$
+\.xls$
+\.zip$
+\bblib/
+\bdevel/
+\bmisc/
+\btarballs/
+\bMakefile\b
