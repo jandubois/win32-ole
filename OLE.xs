@@ -152,7 +152,7 @@ typedef struct
 }   WINOLEVARIANTOBJECT;
 
 /* global variables */
-static CRITICAL_SECTION CriticalSection;
+static CRITICAL_SECTION g_CriticalSection;
 static OBJECTHEADER *g_pObj = NULL;
 
 /* forward declarations */
@@ -204,6 +204,18 @@ GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
     Newz(0, psz, count, char);
     WideCharToMultiByte(cp, 0, wide, -1, psz, count, NULL, NULL);
     return psz;
+}
+
+SV *
+sv_setwide(SV *sv, OLECHAR *wide, UINT cp)
+{
+    char szBuffer[OLE_BUF_SIZ];
+    char *pszBuffer;
+
+    pszBuffer = GetMultiByte(wide, szBuffer, sizeof(szBuffer), cp);
+    sv_setpv(sv, pszBuffer);
+    ReleaseBuffer(pszBuffer, szBuffer);
+    return sv;
 }
 
 OLECHAR *
@@ -405,14 +417,14 @@ CheckDestroyFunction(SV *sv, char *szMethod)
 void
 AddToObjectChain(OBJECTHEADER *pHeader, long lMagic)
 {
-    EnterCriticalSection(&CriticalSection);
+    EnterCriticalSection(&g_CriticalSection);
     pHeader->lMagic = lMagic;
     pHeader->pPrevious = NULL;
     pHeader->pNext = g_pObj;
     if (g_pObj)
 	g_pObj->pPrevious = pHeader;
     g_pObj = pHeader;
-    LeaveCriticalSection(&CriticalSection);
+    LeaveCriticalSection(&g_CriticalSection);
 }
 
 void
@@ -421,7 +433,7 @@ RemoveFromObjectChain(OBJECTHEADER *pHeader)
     if (pHeader == NULL)
 	return;
 
-    EnterCriticalSection(&CriticalSection);
+    EnterCriticalSection(&g_CriticalSection);
     if (pHeader->pPrevious == NULL) {
 	g_pObj = pHeader->pNext;
 	if (g_pObj != NULL)
@@ -433,7 +445,7 @@ RemoveFromObjectChain(OBJECTHEADER *pHeader)
 	pHeader->pPrevious->pNext = pHeader->pNext;
 	pHeader->pNext->pPrevious = pHeader->pPrevious;
     }
-    LeaveCriticalSection(&CriticalSection);
+    LeaveCriticalSection(&g_CriticalSection);
 }
 
 SV *
@@ -475,7 +487,6 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
     }
 
     AddToObjectChain(&pObj->header, WINOLE_MAGIC);
-
 
     DBG(("CreatePerlObject = |%lx| Class = %s Tie = %s\n", pObj, 
 	 HvNAME(stash), szTie));
@@ -542,22 +553,10 @@ DestroyPerlObject(WINOLEOBJECT *pObj)
 }   /* DestroyPerlObject */
 
 WINOLEOBJECT *
-CheckOleStruct(IV addr)
-{
-    WINOLEOBJECT *pObj = (WINOLEOBJECT*)addr;
-
-    if (pObj == NULL || pObj->header.lMagic != WINOLE_MAGIC) {
-	warn("Win32::OLE: CheckOleStruct() Not a %s object", szWINOLE);
-	DEBUGBREAK;
-	pObj = NULL;
-    }
-
-    return pObj;
-}
-
-WINOLEOBJECT *
 GetOleObject(SV *sv)
 {
+    WINOLEOBJECT *pObj = NULL;
+
     /* Don't use sv_isobject/sv_derived_from; they'll call mg_get!
        This will call the default OLE method if numeric/stringify
        overloading has been enabled.
@@ -565,14 +564,20 @@ GetOleObject(SV *sv)
     if (sv != NULL && SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 	if (psv != NULL) {
-	    IV addr = SvIV(*psv);
-	    DBG(("GetOleObject = |%lx|\n", addr));
-	    return CheckOleStruct(addr);
+	    pObj = (WINOLEOBJECT*)SvIV(*psv);
+	    DBG(("GetOleObject = |%lx|\n", pObj));
+
+	    if (pObj != NULL && pObj->header.lMagic != WINOLE_MAGIC)
+		pObj = NULL;
 	}
     }
-    warn("Win32::OLE: GetOleObject() Not a %s object", szWINOLE);
-    DEBUGBREAK;
-    return (WINOLEOBJECT*)NULL;
+
+    if (pObj == NULL) {
+	warn("Win32::OLE: GetOleObject() Not a %s object", szWINOLE);
+	DEBUGBREAK;
+    }
+
+    return pObj;
 }
 
 WINOLEENUMOBJECT *
@@ -740,7 +745,6 @@ NextPropertyName(WINOLEOBJECT *pObj)
     HRESULT res;
     unsigned int cName;
     BSTR bstr;
-    char szName[64];
 
     if (pObj->pTypeInfo == NULL)
 	return &sv_undef;
@@ -772,10 +776,8 @@ NextPropertyName(WINOLEOBJECT *pObj)
 		|| cName == 0 || bstr == NULL)
 		continue;
 
-	    char *pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
-	    SV *sv = newSVpv(pszName, 0);
+	    SV *sv = sv_setwide(newSVpv("",0), bstr, cp);
 	    SysFreeString(bstr);
-	    ReleaseBuffer(pszName, szName);
 	    return sv;
 	}
 	/* Now try the VAR_DISPATCH kind variables used by older OLE versions */
@@ -801,10 +803,8 @@ NextPropertyName(WINOLEOBJECT *pObj)
 		|| cName == 0 || bstr == NULL)
 		continue;
 
-	    char *pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
-	    SV *sv = newSVpv(pszName, 0);
+	    SV *sv = sv_setwide(newSVpv("",0), bstr, cp);
 	    SysFreeString(bstr);
-	    ReleaseBuffer(pszName, szName);
 	    return sv;
 	}
     }
@@ -820,7 +820,6 @@ CreateEnumVARIANT(WINOLEOBJECT *pObj)
     DISPPARAMS dispParams;
     VARIANT result;
     HRESULT res;
-    IUnknown *punk;
     IEnumVARIANT *pEnum = NULL;
 
     VariantInit(&result);
@@ -835,18 +834,16 @@ CreateEnumVARIANT(WINOLEOBJECT *pObj)
     res = pObj->pDispatch->Invoke(DISPID_NEWENUM, IID_NULL,
 			    lcid, DISPATCH_METHOD | DISPATCH_PROPERTYGET,
 			    &dispParams, &result, &excepinfo, &argErr);
-    if (CheckOleError(pObj->stash, res, &excepinfo, NULL) ||
-	(V_VT(&result)&~VT_BYREF) != VT_UNKNOWN)
-	return NULL;;
-
-    if (V_ISBYREF(&result))
-	punk = *V_UNKNOWNREF(&result);
-    else
-	punk = V_UNKNOWN(&result);
-
-    res = punk->QueryInterface(IID_IEnumVARIANT, (void**)&pEnum);
+    if (SUCCEEDED(res)) {
+	if (V_VT(&result) == VT_UNKNOWN)
+	    res = V_UNKNOWN(&result)->QueryInterface(IID_IEnumVARIANT,
+						     (void**)&pEnum);
+	else if (V_VT(&result) == VT_DISPATCH)
+	    res = V_DISPATCH(&result)->QueryInterface(IID_IEnumVARIANT,
+						      (void**)&pEnum);
+    }
     VariantClear(&result);
-    CheckOleError(pObj->stash, res, NULL, NULL);
+    CheckOleError(pObj->stash, res, &excepinfo, NULL);
     return pEnum;
 
 }   /* CreateEnumVARIANT */
@@ -854,15 +851,20 @@ CreateEnumVARIANT(WINOLEOBJECT *pObj)
 SV *
 NextEnumElement(IEnumVARIANT *pEnum, HV *stash)
 {
+    HRESULT res = S_OK;
     SV *sv = &sv_undef;
     VARIANT variant;
 
     VariantInit(&variant);
     if (pEnum->Next(1, &variant, NULL) == S_OK) {
 	sv = newSVpv("",0);
-	HRESULT res = SetSVFromVariant(&variant, sv, stash);
-	VariantClear(&variant);
-	CheckOleError(stash, res, NULL, NULL);
+	res = SetSVFromVariant(&variant, sv, stash);
+    }
+    VariantClear(&variant);
+    if (FAILED(res)) {
+        SvREFCNT_dec(sv);
+	sv = &sv_undef;
+	ReportOleError(stash, res, NULL, NULL);
     }
     return sv;
 
@@ -896,9 +898,10 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 	    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(sv);
 	    if (pVarObj == NULL)
 		res = E_POINTER;
-	    else
+	    else {
+		/* XXX Should we use VariantCopyInd? */
 		res = VariantCopy(pVariant, &pVarObj->variant);
-
+	    }
 	    return res;
 	}
 
@@ -963,12 +966,13 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 	}
 
 	/* Create and fill VARIANT array */
-	V_ARRAY(pVariant) = SafeArrayCreate(VT_VARIANT, dim, psab);
-	if (V_ARRAY(pVariant) == NULL)
+	SAFEARRAY *psa = SafeArrayCreate(VT_VARIANT, dim, psab);
+	if (psa == NULL)
 	    res = E_OUTOFMEMORY;
-	else {
-	    V_VT(pVariant) = VT_VARIANT | VT_ARRAY;
+	else
+	    res = SafeArrayLock(psa);
 
+	if (SUCCEEDED(res)) {
 	    pav[0] = (AV*)sv;
 	    plen[0] = av_len(pav[0])+1;
 	    Zero(pix, dim, long);
@@ -986,17 +990,12 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 		    }
 
 		    if (SvOK(*psv)) {
-			VARIANT variant;
-			res = SetVariantFromSV(*psv, &variant, cp);
-			if (SUCCEEDED(res)) {
-			    res = SafeArrayPutElement(V_ARRAY(pVariant),
-						      pix, &variant);
-			    VariantClear(&variant);
-			}
-			if (FAILED(res)) {
-			    VariantClear(pVariant);
+			VARIANT *pElement;
+			res = SafeArrayPtrOfIndex(psa, pix, (void**)&pElement);
+			if (SUCCEEDED(res))
+			    res = SetVariantFromSV(*psv, pElement, cp);
+			if (FAILED(res))
 			    break;
-			}
 		    }
 		}
 
@@ -1006,12 +1005,20 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 		    pix[index--] = 0;
 		}
 	    }
+	    res = SafeArrayUnlock(psa);
 	}
 
 	Safefree(pav);
 	Safefree(pix);
 	Safefree(plen);
 	Safefree(psab);
+
+	if (SUCCEEDED(res)) {
+	    V_VT(pVariant) = VT_VARIANT | VT_ARRAY;
+	    V_ARRAY(pVariant) = psa;
+	}
+	else if (psa != NULL)
+	    SafeArrayDestroy(psa);
 
 	return res;
     }
@@ -1063,7 +1070,8 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
     sv_setsv(sv, &sv_undef);
 
     if (V_ISARRAY(pVariant)) {
-	SAFEARRAY *psa = V_ARRAY(pVariant);
+	SAFEARRAY *psa = V_ISBYREF(pVariant) ? *V_ARRAYREF(pVariant) 
+	                                     : V_ARRAY(pVariant);
 	AV **pav;
 	IV index;
 	long *pArrayIndex, *pLowerBound, *pUpperBound;
@@ -1075,7 +1083,7 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	V_VT(&variant) = (V_VT(pVariant) & ~VT_ARRAY) | VT_BYREF;
 
 	/* convert 1-dim UI1 ARRAY to simple SvPV */
-	if (dim == 1 && (V_VT(pVariant) & ~VT_ARRAY) == VT_UI1) {
+	if (dim == 1 && (V_VT(pVariant) & ~VT_ARRAY & ~VT_BYREF) == VT_UI1) {
 	    char *pStr;
 	    long lLower, lUpper;
 
@@ -1129,30 +1137,20 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 		    }
 		}
 	    }
-	    res = SafeArrayUnlock(psa);
+
+	    /* preserve previous error code */
+	    HRESULT res2 = SafeArrayUnlock(psa);
+	    if (SUCCEEDED(res))
+		res = res2;
 	}
 
 	for (index = 1 ; index < dim ; ++index)
 	    SvREFCNT_dec((SV*)pav[index]);
 
-	if (FAILED(res))
+	if (SUCCEEDED(res))
+	    sv_setsv(sv, sv_2mortal(newRV_noinc((SV*)*pav)));
+	else
 	    SvREFCNT_dec((SV*)*pav);
-	else {
-	    SV *retval = newRV_noinc((SV*)*pav);
-
-	    /* eliminate all outer-level single-element lists */
-	    //while (SvROK(retval)) {
-	    //	AV *av = (AV*)SvRV(retval);
-	    //	if (SvTYPE((SV*)av) != SVt_PVAV || av_len(av) != 0)
-	    //	    break;
-	    //	SV *temp = av_pop(av);
-	    //	SvREFCNT_dec(retval);
-	    //	retval = temp;
-	    //}
-
-	    sv_setsv(sv, retval);
-	    SvREFCNT_dec(retval);
-	}
 
 	Safefree(pArrayIndex);
 	Safefree(pLowerBound);
@@ -1193,19 +1191,14 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	break;
 
     case VT_BSTR:
-ConvertString:
     {
-	char Str[260];
-	char *pStr;
 	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
 	if (V_ISBYREF(pVariant))
-	    pStr = GetMultiByte(*V_BSTRREF(pVariant), Str, sizeof(Str), cp);
+	    sv_setwide(sv, *V_BSTRREF(pVariant), cp);
 	else
-	    pStr = GetMultiByte(V_BSTR(pVariant), Str, sizeof(Str), cp);
+	    sv_setwide(sv, V_BSTR(pVariant), cp);
 
-	sv_setpv(sv, pStr);
-	ReleaseBuffer(pStr, Str);
 	break;
     }
 
@@ -1261,9 +1254,14 @@ ConvertString:
     default:
     {
 	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-	HRESULT res = VariantChangeTypeEx(pVariant, pVariant, lcid, 0, VT_BSTR);
-	if (SUCCEEDED(res))
-	    goto ConvertString;
+	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	VARIANT variant;
+
+	VariantInit(&variant);
+	res = VariantChangeTypeEx(&variant, pVariant, lcid, 0, VT_BSTR);
+	if (SUCCEEDED(res) && V_VT(&variant) == VT_BSTR)
+	    sv_setwide(sv, V_BSTR(&variant), cp);
+	VariantClear(&variant);
 	break;
     }
     }
@@ -1282,7 +1280,7 @@ DllMain
 {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
-	InitializeCriticalSection(&CriticalSection);
+	InitializeCriticalSection(&g_CriticalSection);
 	OleInitialize(NULL);
 	break;
 
@@ -1293,7 +1291,7 @@ DllMain
 	 * Only external resources are cleaned up here.
 	 */
 
-	/* XXX Should we EnterCriticalSection(&CriticalSection) ??? */
+	/* XXX Should we EnterCriticalSection(&g_CriticalSection) ??? */
 	DBG(("DLL_PROCESS_DETACH\n"));
 
 	while (g_pObj != NULL) {
@@ -1339,7 +1337,7 @@ DllMain
 	DBG(("OleUninitialize\n"));
 	OleUninitialize();
 	DBG(("DeleteCriticalSection\n"));
-	DeleteCriticalSection(&CriticalSection);
+	DeleteCriticalSection(&g_CriticalSection);
 	DBG(("Really the end...\n"));
 	break;
     }
@@ -1560,8 +1558,9 @@ PPCODE:
     SV *err = NULL; /* error details */
     HRESULT res = S_OK;
 
-    VariantInit(&result);
     ST(0) = &sv_no;
+    Zero(&excepinfo, 1, EXCEPINFO);
+    VariantInit(&result);
 
     if (!sv_isobject(self)) {
 	warn("Win32::OLE::Dispatch: Cannot be called as class method");
@@ -1596,9 +1595,6 @@ PPCODE:
     dispParams.rgdispidNamedArgs = NULL;
     dispParams.cNamedArgs = 0;
     dispParams.cArgs = items - 3;
-
-    Zero(&excepinfo, 1, EXCEPINFO);
-    VariantInit(&result);
 
     /* last arg is ref to a non-object-hash => named arguments */
     curitem = ST(items-1);
@@ -1709,8 +1705,8 @@ PPCODE:
 	    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(retval);
 
 	    if (pVarObj != NULL) {
-		VariantClear(&pVarObj->variant);
 		VariantClear(&pVarObj->byref);
+		VariantClear(&pVarObj->variant);
 		VariantCopy(&pVarObj->variant, &result);
 		ST(0) = &sv_yes;
 	    }
@@ -1719,7 +1715,6 @@ PPCODE:
 	    res = SetSVFromVariant(&result, retval, pObj->stash);
 	    ST(0) = &sv_yes;
 	}
-	VariantClear(&result);
     }
     else {
 	/* use more specific error code from exception when available */
@@ -1737,6 +1732,7 @@ PPCODE:
     }
 
  Cleanup:
+    VariantClear(&result);
     if (dispParams.cArgs != 0 && dispParams.rgvarg != NULL) {
 	for(index = 0; index < dispParams.cArgs; ++index)
 	    VariantClear(&dispParams.rgvarg[index]);
@@ -1894,8 +1890,6 @@ PPCODE:
     ITypeLib *pTypeLib;
     unsigned int count;
     BSTR bstr;
-    char szName[64];
-    char *pszName;
 
     HRESULT res = pObj->pDispatch->GetTypeInfoCount(&count);
     if (FAILED(res) || count == 0)
@@ -1926,10 +1920,8 @@ PPCODE:
 	    XSRETURN_UNDEF;
 	}
 
-	pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
-	PUSHs(sv_2mortal(newSVpv(pszName, 0)));
+	PUSHs(sv_2mortal(sv_setwide(newSVpv("",0), bstr, cp)));
 	SysFreeString(bstr);
-	ReleaseBuffer(pszName, szName);
     }
 
     res = pTypeInfo->GetDocumentation(MEMBERID_NIL, &bstr, NULL, NULL, NULL);
@@ -1937,10 +1929,8 @@ PPCODE:
     if (CheckOleError(stash, res, NULL, NULL))
 	XSRETURN_UNDEF;
 
-    pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
-    PUSHs(sv_2mortal(newSVpv(pszName, 0)));
+    PUSHs(sv_2mortal(sv_setwide(newSVpv("",0), bstr, cp)));
     SysFreeString(bstr);
-    ReleaseBuffer(pszName, szName);
 }
 
 ##############################################################################
@@ -1967,11 +1957,9 @@ Fetch(self,key,def)
     SV *def
 PPCODE:
 {
-    SV **coo;
     char *buffer;
     unsigned int length;
     unsigned int argErr;
-    WINOLEOBJECT *pObj;
     EXCEPINFO excepinfo;
     DISPPARAMS dispParams;
     VARIANT result;
@@ -1979,29 +1967,17 @@ PPCODE:
     DISPID dispID = DISPID_VALUE;
     HRESULT res;
 
-    ST(0) = &sv_undef;
-
-    coo = hv_fetch((HV*)SvRV(self), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
-    DBG(("Win32::OLE::Tie::FETCH |%s| |%d| |%lx|\n",
-	 PERL_OLE_ID, PERL_OLE_IDLEN, coo));
-
-    if (coo == NULL) {
-	warn("Win32::OLE::Tie::FETCH: Not a Win32::OLE object");
-	DEBUGBREAK;
-	XSRETURN(1);
-    }
-
     buffer = SvPV(key, length);
     if (strEQ(buffer, PERL_OLE_ID)) {
-	ST(0) = *coo;
+	ST(0) = *hv_fetch((HV*)SvRV(self), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 	XSRETURN(1);
     }
 
-    pObj = CheckOleStruct(SvIV(*coo));
-    if (pObj == NULL) {
-	XSRETURN(1);
-    }
+    WINOLEOBJECT *pObj = GetOleObject(self);
+    if (pObj == NULL)
+	XSRETURN_EMPTY;
 
+    ST(0) = &sv_undef;
     VariantInit(&result);
     VariantInit(&propName);
 
@@ -2039,14 +2015,15 @@ PPCODE:
     if (FAILED(res)) {
 	SV *sv = sv_newmortal();
 	sv_setpvf(sv, "in methodcall/getproperty \"%s\"", buffer);
+	VariantClear(&result);
 	ReportOleError(pObj->stash, res, &excepinfo, sv);
     }
     else {
 	ST(0) = sv_newmortal();
 	res = SetSVFromVariant(&result, ST(0), pObj->stash);
+	VariantClear(&result);
 	CheckOleError(pObj->stash, res, NULL, NULL);
     }
-    VariantClear(&result);
 
     XSRETURN(1);
 }
@@ -2068,6 +2045,7 @@ PPCODE:
     DISPID dispIDParam;
     DISPPARAMS dispParams;
     VARIANTARG propertyValue[2];
+    SV *err = NULL;
 
     WINOLEOBJECT *pObj = GetOleObject(self);
     if (pObj == NULL)
@@ -2084,6 +2062,7 @@ PPCODE:
 
     VariantInit(&propertyValue[0]);
     VariantInit(&propertyValue[1]);
+    Zero(&excepinfo, 1, EXCEPINFO);
 
     buffer = SvPV(key, length);
     res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
@@ -2100,23 +2079,21 @@ PPCODE:
     }
 
     res = SetVariantFromSV(value, &propertyValue[0], cp);
-    if (CheckOleError(pObj->stash, res, NULL, NULL)) {
-	VariantClear(&propertyValue[1]);
-	XSRETURN_EMPTY;
+    if (SUCCEEDED(res)) {
+	res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, 
+				      DISPATCH_PROPERTYPUT,
+				      &dispParams, NULL, &excepinfo, &argErr);
+	if (FAILED(res)) {
+	    err = sv_newmortal();
+	    sv_setpvf(err, "in setproperty \"%s\"", buffer);
+	}
     }
-
-    Zero(&excepinfo, 1, EXCEPINFO);
-    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, DISPATCH_PROPERTYPUT,
-				  &dispParams, NULL, &excepinfo, &argErr);
 
     for(index = 0; index < dispParams.cArgs; ++index)
 	VariantClear(&propertyValue[index]);
 
-    if (FAILED(res)) {
-	SV *err = sv_newmortal();
-	sv_setpvf(err, "in setproperty \"%s\"", buffer);
-	ReportOleError(pObj->stash, res, &excepinfo, err);
-    }
+    if (CheckOleError(pObj->stash, res, &excepinfo, err))
+	XSRETURN_EMPTY;
 
     XSRETURN_YES;
 }
@@ -2262,43 +2239,39 @@ PPCODE:
 	    continue;
 	}
 
-	/* extract all constants for each ENUM */
-	if (pTypeAttr->typekind == TKIND_ENUM) {
-	    for (int iVar=0 ; iVar < pTypeAttr->cVars ; ++iVar) {
-		LPVARDESC pVarDesc;
+	for (int iVar=0 ; iVar < pTypeAttr->cVars ; ++iVar) {
+	    LPVARDESC pVarDesc;
 
-		res = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
-		/* XXX LEAK alert */
-		if (CheckOleError(stash, res, NULL, NULL))
+	    res = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
+	    /* XXX LEAK alert */
+	    if (CheckOleError(stash, res, NULL, NULL))
+	        continue;
+
+	    if (pVarDesc->varkind == VAR_CONST &&
+		!(pVarDesc->wVarFlags & (VARFLAG_FHIDDEN |
+					 VARFLAG_FRESTRICTED |
+					 VARFLAG_FNONBROWSABLE))) 
+	    {
+		unsigned int cName;
+		BSTR bstr;
+		char szName[64];
+
+		res = pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
+		if (CheckOleError(stash, res, NULL, NULL) 
+		    || cName == 0 || bstr == NULL)
 		    continue;
 
-		if (pVarDesc->varkind == VAR_CONST &&
-		    !(pVarDesc->wVarFlags & (VARFLAG_FHIDDEN |
-					     VARFLAG_FRESTRICTED |
-					     VARFLAG_FNONBROWSABLE))) {
-		    unsigned int cName;
-		    BSTR bstr;
-		    char szName[64];
+		char *pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
+		SV *sv = newSVpv("",0);
+		/* XXX LEAK alert */
+		res = SetSVFromVariant(pVarDesc->lpvarValue, sv, stash);
+		if (!CheckOleError(stash, res, NULL, NULL))
+		    hv_store(hv, pszName, strlen(pszName), sv, 0);
 
-		    res = pTypeInfo->GetNames(pVarDesc->memid, &bstr,
-					      1, &cName);
-		    if (CheckOleError(stash, res, NULL, NULL)
-			|| cName == 0 || bstr == NULL)
-			continue;
-
-		    char *pszName = GetMultiByte(bstr, szName, sizeof(szName),
-						 cp);
-		    SV *sv = newSVpv("",0);
-		    /* XXX LEAK alert */
-		    res = SetSVFromVariant(pVarDesc->lpvarValue, sv, stash);
-		    if (!CheckOleError(stash, res, NULL, NULL))
-			hv_store(hv, pszName, strlen(pszName), sv, 0);
-
-		    SysFreeString(bstr);
-		    ReleaseBuffer(pszName, szName);
-		}
-		pTypeInfo->ReleaseVarDesc(pVarDesc);
+		SysFreeString(bstr);
+		ReleaseBuffer(pszName, szName);
 	    }
+	    pTypeInfo->ReleaseVarDesc(pVarDesc);
 	}
 
 	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
@@ -2588,6 +2561,7 @@ PPCODE:
 	RemoveFromObjectChain((OBJECTHEADER*)pVarObj);
 	VariantClear(&pVarObj->byref);
 	VariantClear(&pVarObj->variant);
+	Safefree(pVarObj);
     }
 
     XSRETURN_EMPTY;
@@ -2630,10 +2604,12 @@ PPCODE:
 
 	VariantInit(&variant);
 	res = VariantChangeTypeEx(&variant, &pVarObj->variant, lcid, 0, type);
-	if (!CheckOleError(stash, res, NULL, NULL)) {
+	if (SUCCEEDED(res)) {
 	    ST(0) = sv_newmortal();
 	    SetSVFromVariant(&variant, ST(0), SvSTASH(SvRV(self)));
 	}
+	VariantClear(&variant);
+	CheckOleError(stash, res, NULL, NULL);
     }
     XSRETURN(1);
 }
@@ -2651,6 +2627,7 @@ PPCODE:
 	HV *stash = GetStash(self);
 	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
 
+	/* XXX: Does it work with VT_BYREF? */
 	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant, 
 				  lcid, 0, type);
 	CheckOleError(stash, res, NULL, NULL);
@@ -2676,10 +2653,10 @@ PPCODE:
 	VARIANT *pVariant = &pVarObj->variant;
 	HRESULT res = S_OK;
 
+	VariantInit(&Variant);
 	if ((V_VT(pVariant) & ~VT_BYREF) != VT_BSTR) {
 	    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
 
-	    VariantInit(&Variant);
 	    res = VariantChangeTypeEx(&Variant, pVariant, lcid, 0, VT_BSTR);
 	    pVariant = &Variant;
 	}
@@ -2696,6 +2673,7 @@ PPCODE:
 	    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), 
 					gv_stashpv("Unicode::String", TRUE)));
 	}
+	VariantClear(&Variant);
     }
     XSRETURN(1);
 }

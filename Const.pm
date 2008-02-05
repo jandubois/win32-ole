@@ -19,7 +19,9 @@ sub import {
 	# old version:
 	#   no strict 'refs';
 	#   *{"${callpkg}::${key}"} = \$const->{$key};
-	eval "sub ${callpkg}::${key} { $const->{$key} }";
+	my $Value = $const->{$key};
+	$Value = "\"$Value\"" unless $Value =~ /^\d+$/;
+	eval "sub ${callpkg}::${key} { $Value; }";
     }
 }
 
@@ -102,8 +104,8 @@ Win32::OLE::Const - Extract constant definitions from TypeLib
 
 =head1 SYNOPSIS
 
-    use Win32::OLE::Const ("Microsoft Excel");
-    print "xlMarkerStyleDot = $xlMarkerStyleDot\n";
+    use Win32::OLE::Const 'Microsoft Excel';
+    printf "xlMarkerStyleDot = %d\n", xlMarkerStyleDot;
 
     my $wd = Win32::OLE::Const->Load("Microsoft Word 8\\.0 Object Library");
     foreach my $key (keys %$wd) {
@@ -168,7 +170,7 @@ Another advantage is that all available constants can now be enumerated.
 
 The load method also accepts an OLE object as a parameter. In this case
 the OLE object is queried about its containing type library and no registry
-search is done at all. Interestingly this seems to be slower thought.
+search is done at all. Interestingly this seems to be slower.
 
 =back
 

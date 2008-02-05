@@ -1,5 +1,10 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0610
+	- Win32::OLE::Const now loads consts from all TKINDs and not only ENUMs
+	- Win32::OLE::Variants are actually freed during DESTROY now
+	- Misc. robustness fixes (VariantClear etc.)
+
 0.0609
 	- Win32::OLE::LastError() returns $Win32::OLE::LastError
 	- misc COSERVERINFO fixes
@@ -8,7 +13,7 @@ Revision history for Perl extension Win32::OLE.
 	- use scode from excepinfo structure when available instead 
 	  of DISP_E_EXCEPTION (as suggested by Steve Glassman)
 	- misc. Get(WideChar|MultiByte) robustness enhancements
-	- Win32::OLE::new uses CTLX_SERVER
+	- Win32::OLE::new now uses CLSTLX_SERVER
 	-         "       allows specification of remote server name
 	-         "          "         "       of numeric class id
 
