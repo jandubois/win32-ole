@@ -23,17 +23,14 @@
  */
 
 #ifdef XS_VERSION
-#   define MY_VERSION "Win32::OLE::" XS_VERSION
+#   define MY_VERSION "Win32::OLE(" XS_VERSION ")"
 #else
-#   define MY_VERSION "Win32::OLE::?.??"
+#   define MY_VERSION "Win32::OLE(?.??)"
 #endif
 
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #define _WIN32_DCOM
 #include <windows.h>
-
-/* necessary for VC++ 5.0? */
-#include <objbase.h>
 
 #ifdef _DEBUG
 #   include <crtdbg.h>
@@ -56,11 +53,10 @@ extern "C" {
 #   error Win32::OLE module requires Perl 5.004_01 or later
 #endif
 
-#if (PATCHLEVEL < 5) && !defined(PL_na)
+#if (PATCHLEVEL < 5) && !defined(PL_dowarn)
 #   define PL_hints	hints
 #   define PL_dowarn	dowarn
 #   define PL_modglobal	modglobal
-#   define PL_na	na
 #   define PL_sv_undef	sv_undef
 #   define PL_sv_yes    sv_yes
 #   define PL_sv_no     sv_no
@@ -343,6 +339,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     HKEY hKeyProgID;
     LONG err;
     HRESULT res = S_OK;
+    STRLEN len;
 
     err = RegConnectRegistry(pszHost, HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
     if (err != ERROR_SUCCESS)
@@ -352,7 +349,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     sv_catpv(subkey, pszProgID);
     sv_catpv(subkey, "\\CLSID");
 
-    err = RegOpenKeyEx(hKeyLocalMachine, SvPV(subkey, PL_na), 0, KEY_READ,
+    err = RegOpenKeyEx(hKeyLocalMachine, SvPV(subkey, len), 0, KEY_READ,
 		       &hKeyProgID);
     if (err != ERROR_SUCCESS)
 	res = HRESULT_FROM_WIN32(err);
@@ -500,11 +497,13 @@ QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
 void
 SetLastOleError(HV *stash, HRESULT res=S_OK, char *pszMsg=NULL)
 {
+    STRLEN len;
+
     /* Find $Win32::OLE::LastError */
     SV *sv = sv_2mortal(newSVpv(HvNAME(stash), 0));
     sv_catpvn(sv, "::", 2);
     sv_catpvn(sv, LASTERR_NAME, LASTERR_LEN);
-    SV *lasterr = perl_get_sv(SvPV(sv, PL_na), TRUE);
+    SV *lasterr = perl_get_sv(SvPV(sv, len), TRUE);
     if (lasterr == NULL) {
 	warn(MY_VERSION ": SetLastOleError: couldnot create variable %s",
 	     LASTERR_NAME);
@@ -526,6 +525,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
 
     IV OleWarn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
     SV *sv = sv_2mortal(newSVpv("",0));
+    STRLEN len;
 
     /* start with exception info */
     if (pExcep != NULL && (pExcep->bstrSource != NULL ||
@@ -595,7 +595,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
 
     /* try to keep linelength of description below 80 chars. */
     char *pLastBlank = NULL;
-    char *pch = SvPV(sv, PL_na);
+    char *pch = SvPV(sv, len);
     int  cch;
 
     for (cch = 0 ; *pch ; ++pch, ++cch) {
@@ -613,7 +613,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
 	}
     }
 
-    SetLastOleError(stash, res, SvPV(sv, PL_na));
+    SetLastOleError(stash, res, SvPV(sv, len));
 
     if (OleWarn > 1 || (OleWarn == 1 && PL_dowarn)) {
 	PUSHMARK(sp) ;
@@ -712,9 +712,10 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
     SV *sv;
     GV **gv = (GV **) hv_fetch(stash, TIE_NAME, TIE_LEN, FALSE);
     char *szTie = szWINOLETIE;
+    STRLEN len;
 
     if (gv != NULL && (sv = GvSV(*gv)) != NULL && SvPOK(sv))
-	szTie = SvPV(sv, PL_na);
+	szTie = SvPV(sv, len);
 
     New(0, pObj, 1, WINOLEOBJECT);
     pObj->pDispatch = pDispatch;
@@ -1801,6 +1802,7 @@ PPCODE:
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     HRESULT res;
+    STRLEN len;
 
     if (CallObjectMethod(mark, ax, items, "new"))
 	return;
@@ -1827,7 +1829,7 @@ PPCODE:
 
     /* normal case: no DCOM */
     if (!SvROK(progid) || SvTYPE(SvRV(progid)) != SVt_PVAV) {
-	pBuffer = GetWideChar(SvPV(progid, PL_na), Buffer, OLE_BUF_SIZ, cp);
+	pBuffer = GetWideChar(SvPV(progid, len), Buffer, OLE_BUF_SIZ, cp);
 	if (isalpha(pBuffer[0]))
 	    res = CLSIDFromProgID(pBuffer, &clsid);
 	else
@@ -1854,23 +1856,23 @@ PPCODE:
 
     /* DCOM spec: ['Servername', 'Program.ID'] */
     AV *av = (AV*)SvRV(progid);
-    SV *host = av_shift(av);
-    progid = av_shift(av);
-    if (av_len(av) != -1 || !SvPOK(progid)) {
+    if (av_len(av) != 1) {
 	warn("Win32::OLE->new: for DCOM use ['Machine', 'Prog.Id']");
 	XSRETURN(1);
     }
+    SV *host = *av_fetch(av, 0, FALSE);
+    progid = *av_fetch(av, 1, FALSE);
 
     /* determine hostname */
     char *pszHost = NULL;
     if (SvPOK(host)) {
-	pszHost = SvPV(host, PL_na);
+	pszHost = SvPV(host, len);
 	if (IsLocalMachine(pszHost))
 	    pszHost = NULL;
     }
 
     /* determine CLSID */
-    char *pszProgID = SvPV(progid, PL_na);
+    char *pszProgID = SvPV(progid, len);
     pBuffer = GetWideChar(pszProgID, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0])) {
 	res = CLSIDFromProgID(pBuffer, &clsid);
@@ -1936,6 +1938,8 @@ PPCODE:
     WINOLEOBJECT *pObj;
     EXCEPINFO excepinfo;
     DISPID dispID = DISPID_VALUE;
+    DISPID dispIDParam = DISPID_PROPERTYPUT;
+    USHORT wFlags = DISPATCH_METHOD | DISPATCH_PROPERTYGET;
     VARIANT result;
     DISPPARAMS dispParams;
     SV *curitem, *sv;
@@ -1965,17 +1969,24 @@ PPCODE:
     LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
     UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
+    /* allow [wFlags, 'Method'] instead of 'Method' */
+    if (SvROK(method) && (sv = SvRV(method)) &&	SvTYPE(sv) == SVt_PVAV &&
+	!SvOBJECT(sv) && av_len((AV*)sv) == 1)
+    {
+	wFlags = SvIV(*av_fetch((AV*)sv, 0, FALSE));
+	method = *av_fetch((AV*)sv, 1, FALSE);
+    }
+
     if (SvPOK(method)) {
 	buffer = SvPV(method, length);
 	if (length > 0) {
 	    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
 	    if (FAILED(res)) {
 		if (PL_hints & HINT_STRICT_SUBS) {
-		    err = newSVpvf(" in GetIDsOfNames \"%s\"", buffer);
+		    err = newSVpvf(" in GetIDsOfNames of \"%s\"", buffer);
 		    ReportOleError(stash, res, NULL, sv_2mortal(err));
 		}
-		ST(0) = &PL_sv_undef;
-		XSRETURN(1);
+		XSRETURN_UNDEF;
 	    }
 	}
     }
@@ -1992,6 +2003,13 @@ PPCODE:
     if (SvROK(curitem) && (sv = SvRV(curitem)) &&
 	SvTYPE(sv) == SVt_PVHV && !SvOBJECT(sv))
     {
+	if (wFlags & (DISPATCH_PROPERTYPUT|DISPATCH_PROPERTYPUTREF)) {
+	    warn("Win32::OLE->Dispatch: named arguments not supported "
+		 "for PROPERTYPUT");
+	    DEBUGBREAK;
+	    XSRETURN_UNDEF;
+	}
+
 	OLECHAR **rgszNames;
 	DISPID  *rgdispids;
 	HV      *hv = (HV*)sv;
@@ -2043,8 +2061,7 @@ PPCODE:
 			sv_catpv(err, error == cErrors ? " and " : ", ");
 		    sv_catpvf(err, "\"%s\"", hv_iterkey(rghe[index-1], &len));
 		}
-
-	    sv_catpvf(err, " in methodcall/getproperty \"%s\"", buffer);
+	    sv_catpvf(err, " in GetIDsOfNames for \"%s\"", buffer);
 	}
 
 	for (index = 0; index <= dispParams.cNamedArgs; ++index)
@@ -2073,8 +2090,12 @@ PPCODE:
 	}
     }
 
-    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid,
-				  DISPATCH_METHOD | DISPATCH_PROPERTYGET,
+    if (wFlags & (DISPATCH_PROPERTYPUT|DISPATCH_PROPERTYPUTREF)) {
+	dispParams.rgdispidNamedArgs = &dispIDParam;
+	dispParams.cNamedArgs = 1;
+    }
+
+    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				  &dispParams, &result, &excepinfo, &argErr);
 
     if (FAILED(res)) {
@@ -2085,8 +2106,7 @@ PPCODE:
 
 	if (res == DISP_E_EXCEPTION && dispID > 0x8000) {
 	    Zero(&excepinfo, 1, EXCEPINFO);
-	    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid,
-				  DISPATCH_METHOD | DISPATCH_PROPERTYGET,
+	    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				  &dispParams, NULL, &excepinfo, &argErr);
 	}
     }
@@ -2113,8 +2133,27 @@ PPCODE:
 	if (res == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
 	    res = excepinfo.scode;
 
+	char *pszDelim = "";
 	err = sv_newmortal();
-	sv_setpvf(err, "in methodcall/getproperty \"%s\"", buffer);
+	sv_setpvf(err, "in ");
+
+	if (wFlags&DISPATCH_METHOD) {
+	    sv_catpv(err, "METHOD");
+	    pszDelim = "/";
+	}
+	if (wFlags&DISPATCH_PROPERTYGET) {
+	    sv_catpvf(err, "%sPROPERTYGET", pszDelim);
+	    pszDelim = "/";
+	}
+	if (wFlags&DISPATCH_PROPERTYPUT) {
+	    sv_catpvf(err, "%sPROPERTYPUT", pszDelim);
+	    pszDelim = "/";
+	}
+	if (wFlags&DISPATCH_PROPERTYPUTREF)
+	    sv_catpvf(err, "%sPROPERTYPUTREF", pszDelim);
+
+	sv_catpvf(err, " \"%s\"", buffer);
+
 	if (res == DISP_E_TYPEMISMATCH || res == DISP_E_PARAMNOTFOUND) {
 	    if (argErr < dispParams.cNamedArgs)
 		sv_catpvf(err, " argument \"%s\"", hv_iterkey(rghe[argErr], &len));
@@ -2211,6 +2250,7 @@ PPCODE:
     char *buffer;
     ULONG ulEaten;
     HRESULT res;
+    STRLEN len;
 
     if (CallObjectMethod(mark, ax, items, "GetObject"))
 	return;
@@ -2239,7 +2279,7 @@ PPCODE:
     if (CheckOleError(stash, res))
 	XSRETURN_UNDEF;
 
-    buffer = SvPV(pathname, PL_na);
+    buffer = SvPV(pathname, len);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
     res = MkParseDisplayName(pBindCtx, pBuffer, &ulEaten, &pMoniker);
     ReleaseBuffer(pBuffer, Buffer);
@@ -2417,7 +2457,7 @@ PPCODE:
 
     if (FAILED(res)) {
 	SV *sv = sv_newmortal();
-	sv_setpvf(sv, "in methodcall/getproperty \"%s\"", buffer);
+	sv_setpvf(sv, "in METHOD/PROPERTYGET \"%s\"", buffer);
 	VariantClear(&result);
 	ReportOleError(stash, res, &excepinfo, sv);
     }
@@ -2445,7 +2485,7 @@ PPCODE:
     HRESULT res;
     EXCEPINFO excepinfo;
     DISPID dispID = DISPID_VALUE;
-    DISPID dispIDParam;
+    DISPID dispIDParam = DISPID_PROPERTYPUT;
     DISPPARAMS dispParams;
     VARIANTARG propertyValue[2];
     SV *err = NULL;
@@ -2460,7 +2500,6 @@ PPCODE:
     LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
     UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
-    dispIDParam = DISPID_PROPERTYPUT;
     dispParams.rgdispidNamedArgs = &dispIDParam;
     dispParams.rgvarg = propertyValue;
     dispParams.cNamedArgs = 1;
@@ -2497,7 +2536,8 @@ PPCODE:
 				      &dispParams, NULL, &excepinfo, &argErr);
 	if (FAILED(res)) {
 	    err = sv_newmortal();
-	    sv_setpvf(err, "in setproperty \"%s\"", buffer);
+	    sv_setpvf(err, "in PROPERTYPUT%s \"%s\"",
+		      (wFlags == DISPATCH_PROPERTYPUTREF ? "REF" : ""), buffer);
 	}
     }
 
@@ -2619,7 +2659,8 @@ PPCODE:
     }
     else {
 	/* try to load registered typelib by classid, version and lcid */
-	char *pszBuffer = SvPV(classid, PL_na);
+	STRLEN len;
+	char *pszBuffer = SvPV(classid, len);
 	pBuffer = GetWideChar(pszBuffer, Buffer, OLE_BUF_SIZ, cp);
 	res = CLSIDFromString(pBuffer, &clsid);
 	ReleaseBuffer(pBuffer, Buffer);
@@ -2630,7 +2671,7 @@ PPCODE:
 	res = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
 	if (FAILED(res) && SvPOK(typelib)) {
 	    /* typelib not registerd, try to read from file "typelib" */
-	    pszBuffer = SvPV(typelib, PL_na);
+	    pszBuffer = SvPV(typelib, len);
 	    pBuffer = GetWideChar(pszBuffer, Buffer, OLE_BUF_SIZ, cp);
 	    res = LoadTypeLib(pBuffer, &pTypeLib);
 	    ReleaseBuffer(pBuffer, Buffer);
@@ -3124,10 +3165,11 @@ PPCODE:
 	if (!CheckOleError(stash, res)) {
 	    BSTR bstr = V_ISBYREF(pVariant) ? *V_BSTRREF(pVariant)
 		                            : V_BSTR(pVariant);
-	    STRLEN len = SysStringLen(bstr);
-	    SV *sv = newSVpv((char*)bstr, 2*len);
-	    U16 *pus = (U16 *)SvPV(sv, PL_na);
-	    for (STRLEN i=0 ; i < len ; ++i)
+	    STRLEN olecharlen = SysStringLen(bstr);
+	    SV *sv = newSVpv((char*)bstr, 2*olecharlen);
+	    STRLEN len;
+	    U16 *pus = (U16 *)SvPV(sv, len);
+	    for (STRLEN i=0 ; i < olecharlen ; ++i)
 		pus[i] = htons(pus[i]);
 
 	    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv),

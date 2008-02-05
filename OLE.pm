@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.09';
+$VERSION = '0.0901';
 
 use Carp;
 use Exporter;
@@ -14,7 +14,9 @@ use DynaLoader;
 @ISA = qw(Exporter DynaLoader);
 
 @EXPORT = qw();
-@EXPORT_OK = qw(CP_ACP CP_OEMCP in valof with OVERLOAD);
+@EXPORT_OK = qw(CP_ACP CP_OEMCP in valof with OVERLOAD
+		DISPATCH_METHOD DISPATCH_PROPERTYGET
+		DISPATCH_PROPERTYPUT DISPATCH_PROPERTYPUTREF);
 @EXPORT_FAIL = qw(OVERLOAD);
 
 sub export_fail {
@@ -36,6 +38,11 @@ $Warn = 1;
 
 sub CP_ACP {0;}    # ANSI codepage
 sub CP_OEMCP {1;}  # OEM codepage
+
+sub DISPATCH_METHOD         {1;}
+sub DISPATCH_PROPERTYGET    {2;}
+sub DISPATCH_PROPERTYPUT    {4;}
+sub DISPATCH_PROPERTYPUTREF {8;}
 
 # The following class methods are pure XS code. They will delegate
 # to Dispatch when called as object methods.
@@ -83,6 +90,25 @@ sub Invoke {
     my ($self, $method, @args) = @_;
     my $retval;
     $self->Dispatch($method, $retval, @args);
+    return $retval;
+}
+
+sub SetProperty {
+    my ($self, $method, @args) = @_;
+    my $retval;
+    my $wFlags = DISPATCH_PROPERTYPUT;
+    if (@args) {
+	my $value = $args[scalar(@args)-1];
+	if (UNIVERSAL::isa($value, 'Win32::OLE')) {
+	    $wFlags = DISPATCH_PROPERTYPUTREF;
+	}
+	elsif (UNIVERSAL::isa($value,'Win32::OLE::Variant')) {
+	    my $type = $value->Type;
+	    # VT_DISPATCH or VT_UNKNOWN
+	    $wFlags = DISPATCH_PROPERTYPUTREF if $type == 9 || $type == 13;
+	}
+    }
+    $self->Dispatch([$wFlags, $method], $retval, @args);
     return $retval;
 }
 
@@ -248,7 +274,10 @@ function must be used if the METHOD name contains characters not valid
 in a Perl variable name (like foreign language characters). It can
 also be used to invoke the default method of an object even if the
 default method has not been given a name in the type library. In this
-case use <undef> or C<''> as the method name.
+case use <undef> or C<''> as the method name. To invoke an OLE objects
+native C<Invoke> method (if such a thing exists), please use:
+
+	$Object->Invoke('Invoke', @Args);
 
 =item Win32::OLE->LastError()
 
@@ -265,10 +294,30 @@ discard the string value):
 
 =item Win32::OLE->QueryObjectType(OBJECT)
 
-The QueryObjectType class method returns a list of the type library
+The C<QueryObjectType> class method returns a list of the type library
 name and the objects class name. In a scalar context it returns the
 class name only. It returns C<undef> when the type information is not
 available.
+
+=item OBJECT->SetProperty(NAME,ARGS,VALUE)
+
+The C<SetProperty> method allows to modify properties with arguments,
+which is not supported by the hash syntax. The hash form
+
+	$Object->{Property} = $Value;
+
+is equivalent to
+
+	$Object->SetProperty('Property', $Value);
+
+Arguments must be specified between the property name and the new value.
+It is not possible to use "named argument" syntax with this function
+because the new value must be the last argument to C<SetProperty>.
+
+This method hides any native OLE object method called C<SetProperty>.
+The native method will still be available through the C<Invoke> method:
+
+	$Object->Invoke('SetProperty', @Args);
 
 =back
 
@@ -666,38 +715,25 @@ the properties of the object.
 
 =item 1
 
-Currently there is no way to invoke any of the C<Dispatch>, C<DESTROY>, 
-C<GetProperty>, C<SetProperty> or C<With> object methods (except by
-calling Dispatch directly). This will be fixed in the next release
-by providing a documented replacement for the C<Dispatch> method. The
-interface has not been determined yet.
+To invoke a native OLE method with the same name as one of the
+Win32::OLE methods (C<Dispatch>, C<Invoke>, C<SetProperty>, C<DESTROY>,
+etc.), you have to use the C<Invoke> method:
 
-=item 2
+	$Object->Invoke('Dispatch', @AdditionalArgs);
 
-In the current release all the C<VT_*> and C<TKIND_*> names are not
-available as OLE method names.
-
-=item 3
-
-All function names defined by the Exporter module are currently unavailable
-as OLE method names. They are C<export>, C<export_to_level>, C<import>,
-C<_push_tags>, C<export_tags>, C<export_ok_tags>, C<export_fail> and
-C<require_version>.
-
-The same is true for all names defined by the Dynaloader: C<dl_load_flags>,
+The same is true for names exported by the Exporter or the Dynaloader
+modules, e.g.: C<export>, C<export_to_level>, C<import>,
+C<_push_tags>, C<export_tags>, C<export_ok_tags>, C<export_fail>,
+C<require_version>, C<dl_load_flags>,
 C<croak>, C<bootstrap>, C<dl_findfile>, C<dl_expandspec>, 
 C<dl_find_symbol_anywhere>, C<dl_load_file>, C<dl_find_symbol>,
 C<dl_undef_symbols>, C<dl_install_xsub> and C<dl_error>.
 
-=item 4
+=item 2
 
-The implementation is rather sensitive to error conditions, and will
-croak() on many different kinds of errors encountered at run time.  This
-could be construed as improper behavior for a generic module such as this.
-A well defined error API to report exceptional conditions will be offered
-in future, to allow the user to control which conditions are fatal.
-
-=back
+The class global variables C<$Win32::OLE::WARN> and C<$Win32::OLE::LCID>
+must currently be accessed directly. An API to manipulate these settings
+will be made available in the future.
 
 =back
 
