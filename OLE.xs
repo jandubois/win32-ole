@@ -874,7 +874,10 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
         LEAVE;
         if (SvTRUE(ERRSV)) {
 #if defined(ACTIVEPERL_CHANGELIST) || (PERL_VERSION > 6 || PERL_SUBVERSION > 0)
-            croak(Nullch); /* rethrow exception */
+            if (sv_isobject(ERRSV))
+                croak(Nullch); /* rethrow exception */
+            else
+                croak("%s", SvPV_nolen(ERRSV));
 #else
             croak("%s", SvPV_nolen(ERRSV));
 #endif
@@ -1063,7 +1066,7 @@ ReleasePerlObject(pTHX_ WINOLEOBJECT *pObj)
 	ENTER;
 	if (SvPOK(pObj->destroy)) {
 	    /* $self->Dispatch($destroy,$retval); */
-	    EXTEND(sp, 3);
+	    EXTEND(SP, 3);
 	    PUSHMARK(sp);
 	    PUSHs(self);
 	    PUSHs(pObj->destroy);
@@ -2203,7 +2206,7 @@ SetSVFromGUID(pTHX_ REFGUID rguid)
     CV *cv = perl_get_cv("Win32::COM::GUID::new", FALSE);
 
     if (cv) {
-	EXTEND(sp, 2);
+	EXTEND(SP, 2);
 	PUSHMARK(sp);
 	PUSHs(sv_2mortal(newSVpv("Win32::COM::GUID", 0)));
 	PUSHs(sv_2mortal(newSVpv((char*)&rguid, sizeof(GUID))));
@@ -3233,7 +3236,7 @@ CallObjectMethod(pTHX_ SV **mark, I32 ax, I32 items, char *pszMethod)
      * the method name and return value.
      */
     PUSHMARK(mark);
-    EXTEND(sp,2);
+    EXTEND(SP, 2);
     for (I32 item = 1; item < items; ++item)
 	ST(2+items-item) = ST(items-item);
     sp += 2;
@@ -4660,7 +4663,7 @@ PPCODE:
 	XSRETURN_EMPTY;
     }
 
-    AV *res = newAV();
+    EXTEND(SP, 5);
 
     // Enumerate all Clsids
     for (DWORD dwClsid=0;; ++dwClsid) {
@@ -4713,7 +4716,7 @@ PPCODE:
 		err = RegOpenKeyExW(hKeyClsid, wVersion, 0, KEY_READ, &hKeyVersion);
 		if (err != ERROR_SUCCESS)
 		    continue;
-		
+
 		cbTitle = (sizeof(wTitle)/sizeof(wTitle[0]));
 		err = RegQueryValueW(hKeyVersion, NULL, wTitle, &cbTitle);
 		if (err != ERROR_SUCCESS || cbTitle <= 1)
@@ -4752,7 +4755,7 @@ PPCODE:
 				       NULL, NULL, NULL, &ft);
 		    if (err != ERROR_SUCCESS)
 			break;
-		    
+
 		    W2AHELPER(wLangid, szLangid, sizeof(szLangid));
 		    cbLangid = strlen(szLangid);
 		}
@@ -4801,13 +4804,19 @@ PPCODE:
 		    err = RegQueryValueA(hKeyLangid, "win32", szFile, &cbFile);
 		}
 		if (err == ERROR_SUCCESS && cbFile > 1) {
-		    AV *av = newAV();
-		    av_push(av, newSVpv(szClsid, cbClsid));
-		    av_push(av, newSVpv(szTitle, cbTitle-1));
-		    av_push(av, newSVpv(szVersion, cbVersion));
-		    av_push(av, newSVpv(szLangid, cbLangid));
-		    av_push(av, newSVpv(szFile, cbFile-1));
-		    av_push(res, newRV_noinc((SV*)av));
+                    ENTER;
+                    SAVETMPS;
+                    PUSHMARK(SP);
+		    PUSHs(sv_2mortal(newSVpv(szClsid, cbClsid)));
+		    PUSHs(sv_2mortal(newSVpv(szTitle, cbTitle-1)));
+		    PUSHs(sv_2mortal(newSVpv(szVersion, cbVersion)));
+		    PUSHs(sv_2mortal(newSVpv(szLangid, cbLangid)));
+		    PUSHs(sv_2mortal(newSVpv(szFile, cbFile-1)));
+                    PUTBACK;
+                    perl_call_pv("Win32::OLE::Const::_Typelib", G_DISCARD);
+                    SPAGAIN;
+                    FREETMPS;
+                    LEAVE;
 		}
 
 		RegCloseKey(hKeyLangid);
@@ -4817,9 +4826,7 @@ PPCODE:
 	RegCloseKey(hKeyClsid);
     }
     RegCloseKey(hKeyTypelib);
-
-    ST(0) = sv_2mortal(newRV_noinc((SV*)res));
-    XSRETURN(1);
+    XSRETURN_EMPTY;
 }
 
 void
@@ -6102,7 +6109,7 @@ PPCODE:
 
     New(0, pCharType, len, unsigned short);
     if (GetStringTypeA(lcid, type, string, len, pCharType)) {
-	EXTEND(sp, len);
+	EXTEND(SP, len);
 	for (int i=0; i < len; ++i)
 	    PUSHs(sv_2mortal(newSViv(pCharType[i])));
     }
@@ -6115,7 +6122,7 @@ PPCODE:
 {
     LANGID langID = GetSystemDefaultLangID();
     if (langID != 0) {
-	EXTEND(sp, 1);
+	EXTEND(SP, 1);
 	XSRETURN_IV(langID);
     }
 }
@@ -6126,7 +6133,7 @@ PPCODE:
 {
     LCID lcid = GetSystemDefaultLCID();
     if (lcid != 0) {
-	EXTEND(sp, 1);
+	EXTEND(SP, 1);
 	XSRETURN_IV(lcid);
     }
 }
@@ -6137,7 +6144,7 @@ PPCODE:
 {
     LANGID langID = GetUserDefaultLangID();
     if (langID != 0) {
-	EXTEND(sp, 1);
+	EXTEND(SP, 1);
 	XSRETURN_IV(langID);
     }
 }
@@ -6148,7 +6155,7 @@ PPCODE:
 {
     LCID lcid = GetUserDefaultLCID();
     if (lcid != 0) {
-	EXTEND(sp, 1);
+	EXTEND(SP, 1);
 	XSRETURN_IV(lcid);
     }
 }

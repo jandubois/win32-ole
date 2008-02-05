@@ -148,12 +148,11 @@ sub SetProperty {
 
 sub AUTOLOAD {
     my $self = shift;
-    $AUTOLOAD =~ s/.*:://o;
-    _croak("Cannot autoload class method \"$AUTOLOAD\"") 
-      unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
+    $AUTOLOAD = substr $AUTOLOAD, rindex($AUTOLOAD, ':')+1;
+    _croak("Cannot autoload class method \"$AUTOLOAD\"")
+	unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
     my $success = $self->Dispatch($AUTOLOAD, my $retval, @_);
     unless (defined $success || ($^H & 0x200) != 0) {
-	warn "retrying default method";
 	# Retry default method if C<no strict 'subs';>
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
     }

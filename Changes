@@ -3,6 +3,14 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1501	unreleased
+	- Don't clobber $1 etc. in AUTOLOAD.  Unfortunately Perl doesn't set
+	  POK on the $1 SV, so we still cannot pass it to OLE methods. :(
+
+0.15	Wed, December 6th, 2000
+	- Make sure the OLE browser works with IE5.5 and the latest ActivePerl
+	- Relax the checks for file existance in Win32::OLE::Const
+
 0.1403	Tue, November 21st, 2000
 	- Win32::OLE::Const: ignore non-existant typelibs (by Richard Letts)
 	- safeguard against access violation in Dispatch()

@@ -6,7 +6,18 @@ use strict;
 use Carp;
 use Win32::OLE;
 
-my $Typelibs = __PACKAGE__->_Typelibs();
+my $Typelibs;
+sub _Typelib {
+    my ($clsid,$title,$version,$langid,$filename) = @_;
+    # Filenames might have a resource index appended to it.
+    $filename = $1 if $filename =~ /^(.*\.(?:dll|exe))(\\\d+)$/i;
+    # Ignore if it looks like a file but doesn't exist.
+    # We don't verify existance of monikers or filenames
+    # without a full pathname.
+    return unless -f $filename || $filename !~ /^\w:\\.*\.(exe|dll)$/;
+    push @$Typelibs, \@_;
+}
+__PACKAGE__->_Typelibs;
 
 sub import {
     my ($self,$name,$major,$minor,$language,$codepage) = @_;
@@ -52,7 +63,6 @@ sub LoadRegTypeLib {
 	next if defined($major) && $maj != $major;
 	next if defined($minor) && $min < $minor;
 	next if defined($language) && $language != $langid;
-	next unless -e $filename;
 	push @found, [$clsid,$maj,$min,$langid,$filename];
     }
 

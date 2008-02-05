@@ -109,10 +109,11 @@ my %frame;
 # Use the ActivePerl documentation stylesheet for all frames
 # ==========================================================
 
-my $css = "$Config{prefix}\\html\\win32prk.css";
+my $css = "$Config{prefix}\\html\\active.css";
+$css = "$Config{prefix}\\html\\win32prk.css" unless -f $css;
 foreach my $frame (qw(Header Libraries Types Members Footer)) {
     $frame{$frame} = $window->parent->frames($frame);
-    $frame{$frame}->document->createStyleSheet($css);
+    $frame{$frame}->document->createStyleSheet($css) if -f $css;
 }
 
 # Rollon/Rolloff highlighting styles for Libraries, Types and Members
@@ -120,6 +121,7 @@ foreach my $frame (qw(Header Libraries Types Members Footer)) {
 
 foreach my $frame (qw(Libraries Types Members)) {
     my $ss = $frame{$frame}->document->createStyleSheet;
+    next unless $ss;
     my $cursor = "cursor: hand";
     $ss->addRule(".Inactive",	    "$cursor; color: black");
     $ss->addRule(".Active",	    "$cursor; color: blue");
@@ -157,21 +159,19 @@ sub onHelp {
 # =============================
 
 my $html = <<HTML;
-    <TABLE BORDER=0 CELLPADDING=0 CELLSPACING=0 WIDTH=100%>
-	<TR><TD CLASS=block VALIGN=MIDDLE WIDTH=100% BGCOLOR=#cc0066>
-	    <FONT SIZE=+1 COLOR=#ff99cc><STRONG>&nbsp;
-		Win32::OLE - Type Library Browser
-	    </STRONG></FONT>
-	</TD></TR>
+    <TABLE border="0" cellpadding="0" cellspacing="0" width="100%">
+      <TR><TD class="block" valign="MIDDLE" width="100%" bgcolor="#cccccc">
+          <STRONG><P class="block">&nbsp;Win32::OLE - Type Library Browser</P>
+          </STRONG></TD></TR>
     </TABLE>
 
     <TABLE BORDER=0 CELLPADDING=0>
 	<TR><TD>Show hidden elements:</TD>
 	    <TD><INPUT TYPE="checkbox" $ShowHidden
-		 onclick="parent.Libraries.ShowHidden"></TD></TR>
+		 onclick="parent.Footer.ShowHidden"></TD></TR>
 	<TR><TD>Group elements by type:</TD>
 	    <TD><INPUT TYPE="checkbox" $GroupByType
-		 onclick="parent.Libraries.GroupByType"></TD></TR>
+		 onclick="parent.Footer.GroupByType"></TD></TR>
     </TABLE>
     <HR><FONT SIZE=-2>Written by Jan Dubois in 1999.</FONT>
 HTML
@@ -193,7 +193,7 @@ sub GroupByType {
 # =============================
 
 my $ss = $frame{Footer}->document->createStyleSheet;
-$ss->addRule(".Indented", "margin-left:48; margin-top:0");
+$ss->addRule(".Indented", "margin-left:48; margin-top:0") if $ss;
 undef $ss;
 
 
@@ -214,21 +214,21 @@ Win32::OLE::Const->EnumTypeLibs(sub {
 # Create list of type libraries
 # =============================
 
-$html = "<TABLE onhelp=onHelp('Libraries')>\n";
+$html = "<TABLE onhelp=\"parent.Footer.onHelp('Libraries')\">\n";
 for my $id (0..@Library-1) {
     $html .= <<HTML;
     <TR><TD NOWRAP ID=LIB_$id CLASS=Inactive
-	    onclick=selectLibrary()
-	    onmouseover=rollon("Libraries")
-	    onmouseout=rolloff("Libraries")>
+	    onclick="parent.Footer.selectLibrary"
+	    onmouseover="parent.Footer.rollon('Libraries')"
+	    onmouseout="parent.Footer.rolloff('Libraries')">
             <IMG SRC="Library.png" WIDTH=16 HEIGHT=16>
 	    $Library[$id]->[libNAME]</TD>
 	<TD>$Library[$id]->[libMAJOR].$Library[$id]->[libMINOR]</TD></TR>
 HTML
 }
 $html .= "</TABLE>";
-# $frame{Libraries}->document->body->{innerHTML} = $html;
-$window->document->write($html);
+$frame{Libraries}->document->body->{innerHTML} = $html;
+#$window->document->write($html);
 
 # Select a type library and display the types
 # ===========================================
@@ -242,7 +242,7 @@ $icon[TKIND_MODULE]   = 'Module';
 my $tlib; # XXX Hack alert!
 
 sub selectLibrary {
-    my $element = $window->event->srcElement;
+    my $element = $frame{Libraries}->event->srcElement;
     $element = $element->parentElement if $element->tagName ne 'TD';
     my ($id) = ($element->id =~ /^LIB_(\d+)/);
     return unless defined $id;
@@ -252,24 +252,28 @@ sub selectLibrary {
     $def[0] = quotemeta $def[0];
     my $typelib = Win32::OLE::Const->LoadRegTypeLib(@def);
     if (Win32::OLE->LastError) {
-	$window->alert("Cannot load library: ".Win32::OLE->LastError);
+	$frame{Libraries}->alert("Cannot load library: ".Win32::OLE->LastError);
 	return;
     }
     $tlib = $typelib;
     my $tcount = $tlib->_GetTypeInfoCount;
 
     # Change selection marker
-    $window->document->all("LIB_$Library")->style->{fontWeight} = 'normal'
-	if defined $Library;
+    $frame{Libraries}->document->all("LIB_$Library")->
+	style->{fontWeight} = 'normal' if defined $Library;
     $Library = $id;
-    $window->document->all("LIB_$Library")->style->{fontWeight} = 'bold';
+    $frame{Libraries}->document->all("LIB_$Library")->
+	style->{fontWeight} = 'bold';
 
     # Hide all interfaces mentioned in a COCLASS definition
     my %hide;
     for (0..$tcount-1) {
 	my $tinfo = $tlib->_GetTypeInfo($_);
-	++$hide{$tinfo->_GetImplTypeInfo($_)->_GetTypeAttr->{guid}}
-	  foreach 0..$tinfo->_GetTypeAttr->{cImplTypes}-1;
+	foreach (0..$tinfo->_GetTypeAttr->{cImplTypes}-1) {
+	    my $impltinfo = $tinfo->_GetImplTypeInfo($_);
+	    next unless defined $impltinfo;
+	    ++$hide{$impltinfo->_GetTypeAttr->{guid}};
+	}
     }
 
     # Make a sorted list of all type information
@@ -301,7 +305,7 @@ sub showLibraryInfo {
     $html .= <<HTML if $HelpFile;
 	<IMG SRC="Help.png" WIDTH=16 HEIGHT=16
 	 STYLE="$opaque cursor:hand"
-	 onclick="parent.Libraries.showHelpfile">&nbsp;
+	 onclick="parent.Footer.showHelpfile">&nbsp;
 HTML
     $html .= "Library <B>$doc->{Name}</B>";
     $html .= "<P CLASS=Indented>$doc->{HelpFile}" if HelpFile;
@@ -337,7 +341,7 @@ sub createTypeTable {
     } 0..@Type-1;
 
     # Create a table of available types
-    my $html = "<TABLE onhelp=\"parent.Libraries.onHelp('Types')\">\n";
+    my $html = "<TABLE onhelp=\"parent.Footer.onHelp('Types')\">\n";
     foreach (0..@Index-1) {
 	my $id = $Index[$_];
 	my $name = $Type[$id]->[typeDOC]->{Name};
@@ -346,9 +350,9 @@ sub createTypeTable {
 	my $hidden = $Type[$id]->[typeHIDDEN] ? 'Hidden' : '';
 	$html .= <<HTML;
 	    <TR><TD NOWRAP ID=TYPE_$id CLASS=Inactive$hidden
-		    onmouseover="parent.Libraries.rollon('Types')"
-		    onmouseout="parent.Libraries.rolloff('Types')"
-		    onclick="parent.Libraries.selectType">
+		    onmouseover="parent.Footer.rollon('Types')"
+		    onmouseout="parent.Footer.rolloff('Types')"
+		    onclick="parent.Footer.selectType">
 		<IMG $src WIDTH=16 HEIGHT=16>$name</TD></TR>
 HTML
     }
@@ -392,8 +396,9 @@ sub selectType {
 	for my $impltype (0 .. $Type[$Type]->[typeATTR]->{cImplTypes}-1) {
 	    my $tflags = $tinfo->_GetImplTypeFlags($impltype);
 	    next unless $tflags & IMPLTYPEFLAG_FDEFAULT;
-	    ($tflags & IMPLTYPEFLAG_FSOURCE ? $event : $dispatch) =
-	      $tinfo->_GetImplTypeInfo($impltype);
+	    my $impltinfo = $tinfo->_GetImplTypeInfo($impltype);
+	    next unless defined $impltinfo;
+	    ($tflags & IMPLTYPEFLAG_FSOURCE ? $event : $dispatch) = $impltinfo;
 	}
 	addFunctions($dispatch);
 	addFunctions($event, 'Event');
@@ -461,7 +466,7 @@ sub showTypeInfo {
     my $html = '';
     $html .= <<HTML if $doc->{HelpFile};
 	<IMG SRC="Help.png" WIDTH=16 HEIGHT=16
-	 STYLE="cursor:hand" onclick="parent.Libraries.showHelpfile">&nbsp;
+	 STYLE="cursor:hand" onclick="parent.Footer.showHelpfile">&nbsp;
 HTML
     my $type = $icon[$Type[$Type]->[typeATTR]->{typekind}] || '???';
     $html .= "$type <B>$doc->{Name}</B>";
@@ -492,7 +497,7 @@ sub createMemberTable {
     } 0..@Member-1;
 
     # Create a table of all members
-    my $html = "<TABLE onhelp=\"parent.Libraries.onHelp('Members')\">\n";
+    my $html = "<TABLE onhelp=\"parent.Footer.onHelp('Members')\">\n";
     foreach (0..@Index-1) {
 	my $id = $Index[$_];
 	my $hidden = $Member[$id]->[membHIDDEN] ? 'Hidden' : '';
@@ -504,9 +509,9 @@ sub createMemberTable {
 	}
 	$html .= <<HTML;
 	    <TR><TD NOWRAP ID=MEMBER_$id CLASS=Inactive$hidden
-		    onmouseover="parent.Libraries.rollon('Members')"
-		    onmouseout="parent.Libraries.rolloff('Members')"
-		    onclick="parent.Libraries.selectMember">
+		    onmouseover="parent.Footer.rollon('Members')"
+		    onmouseout="parent.Footer.rolloff('Members')"
+		    onclick="parent.Footer.selectMember">
 		<IMG SRC="$Member[$id]->[membICON].png"
                     WIDTH=16 HEIGHT=16>$default
 		<SPAN $adjust>$Member[$id]->[membDOC]->{Name}</SPAN></TD></TR>
@@ -559,7 +564,7 @@ sub showMemberInfo {
     my $html = '';
     $html .= <<HTML if $doc->{HelpFile};
 	<IMG SRC="Help.png" WIDTH=16 HEIGHT=16
-	 STYLE="cursor:hand" onclick="parent.Libraries.showHelpfile">
+	 STYLE="cursor:hand" onclick="parent.Footer.showHelpfile">
 HTML
 
     my $type = $Member[$Member]->[membICON];

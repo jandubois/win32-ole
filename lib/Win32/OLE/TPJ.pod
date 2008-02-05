@@ -1,6 +1,10 @@
 =pod
 
-=head1 Win32::OLE
+=head1 NAME
+
+The Perl Journal #10 - Win32::OLE by Jan Dubois
+
+=head1 INTRODUCTION
 
 Suppose you're composing a document with Microsoft Word. You want to
 include an Excel spreadsheet. You could save the spreadsheet in some
