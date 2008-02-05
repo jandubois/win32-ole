@@ -1,7 +1,15 @@
 Changes
-Makefile.PL
+Const.pm	   The Win32::OLE::Const module: TypeLib constants.
+Enum.pm            The Win32::OLE::Enum module: Collection objects.
 MANIFEST
+Makefile.PL
 OLE.pm
 OLE.xs
 README
+ToDo
+Variant.pm         The Win32::OLE::Variant module: VARIANT variables.
+eg/constants.pl    Sample script prints all Excel defined constants.
+eg/properties.pl   Sample script prints all Excel application properties.
+eg/typelibs.pl     Sample script prints all registered typelib names.
 t/ole.t
+typemap

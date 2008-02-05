@@ -1,0 +1,45 @@
+# This file contains random thoughts and notes about what might be
+# changed in future versions of Win32::OLE.
+# Note: No particular order, no promises!
+
+- Cleanup Win32::OLE namespace
+
+- Provide access to instance data for subclassing.
+  Win32::OLE objects use the tied hash mechanism for set/getproperty,
+  so the standard way of accessing instance data is not available.
+
+- Call SUBCLASS::__new__ for internally created objects, so that the subclass
+  can do additional initialisation? Function name?
+
+- TypeInfo support
+  - Generic Typelib stuff
+  - Validate method/property parameters
+  - Automatically assign new OLE objects to a subclass, if that
+    namespace exists and it "isa" Win32::OLE subclass.
+    (e.g. automaticall assign all Excel chart objects to Excel::Chart)
+
+- Add some Array helper stuff to Win32::OLE::Variant
+  Keep global list of variants for cleanup?
+
+- Better error messages
+  Use Grahams Error.pm module when it has been accepted by p5p.
+
+- Implement an error API that offers control over exceptional conditions
+  (rather than simply croak()ing, which is considered "bad" for modules)
+  Perhaps this can ride over a standard Exception package when it becomes
+  available.
+
+- Language/Locale support
+
+- Caching of method dispids should be done on class basis, not per object.
+
+- Add a testcase for the "unnamed" method call to ole.t
+  Add testcases for the Win32::OLE::Variant class
+
+- Create OLE tutorial with better examples
+
+- Make OLE.xs thread-safe
+
+- Provide support for OLE events, if possible
+  - Callbacks in a separate thread
+  - Through some kind of event loop

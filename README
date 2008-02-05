@@ -1,14 +1,23 @@
-
 This is a port of the OLE extensions distributed by Activeware
 to the official perl distribution on Win32.  You will need
-Perl version 5.003_99a or later to use this.
+Perl version 5.004_01 or later to use this.
 
-Installation is simple: you will need Visual C++ 2.x or above.
+Installation is simple: you will need Visual C++ 2.x or above,
+or Borland C++ 4.02 or above.
+
 Do:
 
-   nmake
-   nmake test
-   nmake install
+   perl Makefile.PL
+   $make
+   $make test
+   $make install
+
+where $make is either "nmake" or "dmake".
 
 See the pod documentation for details of usage.
 
+Please look into the compatibity section at the end of the
+documentation if you were previously using the ActiveWare version
+of the OLE extension! It also describes planned future changes that
+might result in incompatibilities if you use undocumented features
+of this module.
