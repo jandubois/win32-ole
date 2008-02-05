@@ -3,6 +3,10 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1402	Mon, September 25th, 2000
+	- Fix potential crash during global cleanup when _Unique is set
+	  (by Rudi Farkas <rudolf.farkas@lecroy.com>)
+
 0.1401	Mon, September 11th, 2000
 	- fix bug in GetMultiByteEx() sometimes chopping off the last byte
 

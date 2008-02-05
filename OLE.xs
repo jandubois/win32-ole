@@ -1074,15 +1074,6 @@ ReleasePerlObject(pTHX_ WINOLEOBJECT *pObj)
 	pObj->destroy = NULL;
     }
 
-    if (pObj->flags & OBJFLAG_UNIQUE) {
-        dPERINTERP;
-        IUnknown *punk; // XXX check error?
-        pObj->pDispatch->QueryInterface(IID_IUnknown, (void**)&punk);
-        hv_delete(g_hv_unique, (char*)&punk, sizeof(punk), G_DISCARD);
-        DBG((" hv_delete(%08x)", punk));
-        punk->Release();
-    }
-
     if (pObj->pEventSink) {
 	DBG((" Unadvise connection |%lx|", pObj));
 	pObj->pEventSink->Unadvise();
@@ -1090,6 +1081,14 @@ ReleasePerlObject(pTHX_ WINOLEOBJECT *pObj)
     }
 
     if (pObj->pDispatch) {
+        if (pObj->flags & OBJFLAG_UNIQUE) {
+            dPERINTERP;
+            IUnknown *punk; // XXX check error?
+            pObj->pDispatch->QueryInterface(IID_IUnknown, (void**)&punk);
+            hv_delete(g_hv_unique, (char*)&punk, sizeof(punk), G_DISCARD);
+            DBG((" hv_delete(%08x)", punk));
+            punk->Release();
+        }
 	DBG((" Release pDispatch"));
 	pObj->pDispatch->Release();
 	pObj->pDispatch = NULL;
