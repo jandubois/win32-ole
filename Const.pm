@@ -5,7 +5,8 @@ package Win32::OLE::Const;
 use strict;
 use Carp;
 use Win32::OLE;
-use Win32::Registry;
+
+my $Typelibs = __PACKAGE__->_Typelibs();
 
 sub import {
     my ($self,$name,$major,$minor,$language,$codepage) = @_;
@@ -25,48 +26,17 @@ sub Load {
 	return;
     }
 
-    my ($hTypelib,$hClsid,$hVersion,$hLangid);
     my @found;
-
-    unless ($main::HKEY_CLASSES_ROOT->Create('TypeLib',$hTypelib)) {
-	carp "Cannot access HKEY_CLASSES_ROOT\\Typelib";
-	return;
+    foreach my $Typelib (@$Typelibs) {
+	my ($clsid,$title,$version,$langid,$filename) = @$Typelib;
+	next unless $title =~ /^$name/;
+	my ($maj,$min) = ($version =~ /^(\d+)\.(\d+)$/);
+	next unless defined $min;
+	next if defined($major) && $maj != $major;
+	next if defined($minor) && $min < $minor;
+	next if defined($language) && $language != $langid;
+	push @found, [$clsid,$maj,$min,$langid,$filename];
     }
-
-    my $Clsids = [];
-    $hTypelib->GetKeys($Clsids);
-
-    foreach my $clsid (@$Clsids) {
-	$hTypelib->Create($clsid,$hClsid);
-	my $Versions = [];
-	$hClsid->GetKeys($Versions);
-	foreach my $version (@$Versions) {
-	    my $value;
-	    next unless $hClsid->QueryValue($version,$value);
-	    next unless $value =~ /^$name/;
-
-	    my ($maj,$min) = ($version =~ /^(\d+)\.(\d+)$/);
-	    next unless defined $min;
-	    next if defined($major) && $maj != $major;
-	    next if defined($minor) && $min < $minor;
-
-	    $hClsid->Create($version,$hVersion);
-	    my $Langids = [];
-	    $hVersion->GetKeys($Langids);
-	    foreach my $langid (@$Langids) {
-		next unless $langid =~ /^\d+$/;
-		next if defined($language) && $language != $langid;
-		$hVersion->Create($langid,$hLangid);
-		my $filename;
-		$hLangid->QueryValue('win32',$filename);
-		$hLangid->Close;
-		push @found, [$clsid,$maj,$min,$langid,$filename];
-	    }
-	    $hVersion->Close;
-	}
-	$hClsid->Close;
-    }
-    $hTypelib->Close;
 
     unless (@found) {
 	carp "No type library matching \"$name\" found";

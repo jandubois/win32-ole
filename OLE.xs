@@ -53,13 +53,15 @@ extern "C" {
 #   error Win32::OLE module requires Perl 5.004_01 or later
 #endif
 
-#if (PATCHLEVEL < 5) && !defined(PL_dowarn)
-#   define PL_hints	hints
-#   define PL_dowarn	dowarn
-#   define PL_modglobal	modglobal
-#   define PL_sv_undef	sv_undef
-#   define PL_sv_yes    sv_yes
-#   define PL_sv_no     sv_no
+#if (PATCHLEVEL < 5)
+#   ifndef PL_dowarn
+#	define PL_dowarn	dowarn
+#	define PL_sv_undef	sv_undef
+#	define PL_sv_yes	sv_yes
+#	define PL_sv_no		sv_no
+#   endif
+#   define PL_hints		hints
+#   define PL_modglobal		modglobal
 #endif
 
 #ifndef CPERLarg
@@ -246,6 +248,8 @@ typedef struct
 typedef struct
 {
     OBJECTHEADER header;
+
+    SV *self;
 
     ITypeInfo *pTypeInfo;
     TYPEATTR  *pTypeAttr;
@@ -519,6 +523,46 @@ GetWideChar(CPERLarg_ char *psz, OLECHAR *wide, int len, UINT cp)
 
 }   /* GetWideChar */
 
+HV *
+GetStash(CPERLarg_ SV *sv)
+{
+    if (sv_isobject(sv))
+	return SvSTASH(SvRV(sv));
+    else if (SvPOK(sv))
+	return gv_stashsv(sv, TRUE);
+    else
+	return (HV *)&PL_sv_undef;
+
+}   /* GetStash */
+
+HV *
+GetWin32OleStash(CPERLarg_ SV *sv)
+{
+    SV *pkg;
+    STRLEN len;
+
+    if (sv_isobject(sv))
+	pkg = newSVpv(HvNAME(SvSTASH(SvRV(sv))), 0);
+    else if (SvPOK(sv))
+	pkg = newSVpv(SvPV(sv, len), len);
+    else
+	pkg = newSVpv(szWINOLE, 0); /* should never happen */
+
+    char *pszColon = strrchr(SvPVX(pkg), ':');
+    if (pszColon != NULL) {
+	--pszColon;
+	while (pszColon > SvPVX(pkg) && *pszColon == ':')
+	    --pszColon;
+	SvCUR(pkg) = pszColon - SvPVX(pkg) + 1;
+	SvPVX(pkg)[SvCUR(pkg)] = '\0';
+    }
+
+    HV *stash = gv_stashsv(pkg, TRUE);
+    SvREFCNT_dec(pkg);
+    return stash;
+
+}   /* GetWin32OleStash */
+
 IV
 QueryPkgVar(CPERLarg_ HV *stash, char *var, STRLEN len, IV def=0)
 {
@@ -700,7 +744,7 @@ CheckDestroyFunction(CPERLarg_ SV *sv, char *szMethod)
     if (SvPOK(sv) || (SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVCV))
 	return sv;
 
-    warn("%s: DESTROY must be a method name or a CODE reference", szMethod);
+    warn("%s(): DESTROY must be a method name or a CODE reference", szMethod);
     DEBUGBREAK;
     return NULL;
 }
@@ -942,6 +986,22 @@ GetOleTypeLibObject(CPERLarg_ SV *sv)
     warn(MY_VERSION ": GetOleTypeLibObject() Not a %s object", szWINOLETYPELIB);
     DEBUGBREAK;
     return (WINOLETYPELIBOBJECT*)NULL;
+}
+
+SV *
+CreateTypeInfoObject(CPERLarg_ ITypeInfo *pInfo, TYPEATTR *pAttr, HV *stash)
+{
+    WINOLETYPEINFOOBJECT *pObj;
+    New(0, pObj, 1, WINOLETYPEINFOOBJECT);
+
+    pObj->pTypeInfo = pInfo;
+    pObj->pTypeAttr = pAttr;
+
+    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pObj,
+		     WINOLETYPEINFO_MAGIC);
+
+    pObj->self = newSViv((IV)pObj);
+    return sv_bless(newRV_noinc(pObj->self), stash);
 }
 
 WINOLETYPEINFOOBJECT *
@@ -1208,21 +1268,67 @@ GetDocumentation(CPERLarg_ BSTR bstrName, BSTR bstrDocString,
 
 }   /* GetDocumentation */
 
+HRESULT
+TranslateTypeDesc(CPERLarg_ TYPEDESC *pTypeDesc, WINOLETYPEINFOOBJECT *pObj,
+		  AV *av)
+{
+    HRESULT hr = S_OK;
+    SV *sv = NULL;
+
+    if (pTypeDesc->vt == VT_USERDEFINED) {
+	ITypeInfo *pTypeInfo;
+	TYPEATTR  *pTypeAttr;
+	hr = pObj->pTypeInfo->GetRefTypeInfo(pTypeDesc->hreftype, &pTypeInfo);
+	if (SUCCEEDED(hr)) {
+	    hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+	    if (SUCCEEDED(hr)) {
+		sv = CreateTypeInfoObject(PERL_OBJECT_THIS_ pTypeInfo,
+					  pTypeAttr, SvSTASH(pObj->self));
+	    }
+	    else
+		pTypeInfo->Release();
+	}
+	if (!sv)
+	    sv = newSVsv(&PL_sv_undef);
+
+    }
+    else if (pTypeDesc->vt == VT_CARRAY) {
+	// XXX to be done
+	sv = newSViv(pTypeDesc->vt);
+    }
+    else
+	sv = newSViv(pTypeDesc->vt);
+
+    av_push(av, sv);
+
+    if (pTypeDesc->vt == VT_PTR || pTypeDesc->vt == VT_SAFEARRAY)
+	hr = TranslateTypeDesc(PERL_OBJECT_THIS_ pTypeDesc->lptdesc, pObj, av);
+
+    return hr;
+}
+
 HV *
-TranslateElemDesc(CPERLarg_ ELEMDESC *pElemDesc, HV *stash)
+TranslateElemDesc(CPERLarg_ ELEMDESC *pElemDesc, WINOLETYPEINFOOBJECT *pObj,
+		  HV *olestash)
 {
     HV *hv = newHV();
-    hv_store(hv, "vt", 2, newSViv(pElemDesc->tdesc.vt), 0);
+
+    AV *av = newAV();
+    TranslateTypeDesc(PERL_OBJECT_THIS_  &pElemDesc->tdesc, pObj, av);
+    hv_store(hv, "vt", 2, newRV_noinc((SV*)av), 0);
+
     USHORT wParamFlags = pElemDesc->paramdesc.wParamFlags;
     hv_store(hv, "wParamFlags", 11, newSViv(wParamFlags), 0);
+
     USHORT wMask = PARAMFLAG_FOPT|PARAMFLAG_FHASDEFAULT;
     if ((wParamFlags & wMask) == wMask) {
 	PARAMDESCEX *pParamDescEx = pElemDesc->paramdesc.pparamdescex;
-	hv_store(hv, "cBytes", 10, newSViv(pParamDescEx->cBytes), 0);
+	hv_store(hv, "cBytes", 6, newSViv(pParamDescEx->cBytes), 0);
+	// XXX should be stored as a Win32::OLE::Variant object ?
 	SV *sv = newSVpv("",0);
 	SetSVFromVariantEx(PERL_OBJECT_THIS_ &pParamDescEx->varDefaultValue,
-			   sv, stash);
-	hv_store(hv, "varDefaultValue", 10, sv, 0);
+			   sv, olestash);
+	hv_store(hv, "varDefaultValue", 15, sv, 0);
     }
 
     return hv;
@@ -1953,7 +2059,7 @@ SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
 HRESULT
 SetSVFromVariant(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash)
 {
-    return SetSVFromVariantEx(PERL_OBJECT_THIS_ pVariant, sv, stash, TRUE);
+    return SetSVFromVariantEx(PERL_OBJECT_THIS_ pVariant, sv, stash);
 }
 
 inline void
@@ -2191,46 +2297,6 @@ CallObjectMethod(CPERLarg_ SV **mark, I32 ax, I32 items, char *pszMethod)
 
 }   /* CallObjectMethod */
 
-HV *
-GetStash(CPERLarg_ SV *sv)
-{
-    if (sv_isobject(sv))
-	return SvSTASH(SvRV(sv));
-    else if (SvPOK(sv))
-	return gv_stashsv(sv, TRUE);
-    else
-	return (HV *)&PL_sv_undef;
-
-}   /* GetStash */
-
-HV *
-GetWin32OleStash(CPERLarg_ SV *sv)
-{
-    SV *pkg;
-    STRLEN len;
-
-    if (sv_isobject(sv))
-	pkg = newSVpv(HvNAME(SvSTASH(SvRV(sv))), 0);
-    else if (SvPOK(sv))
-	pkg = newSVpv(SvPV(sv, len), len);
-    else
-	pkg = newSVpv(szWINOLE, 0); /* should never happen */
-
-    char *pszColon = strrchr(SvPVX(pkg), ':');
-    if (pszColon != NULL) {
-	--pszColon;
-	while (pszColon > SvPVX(pkg) && *pszColon == ':')
-	    --pszColon;
-	SvCUR(pkg) = pszColon - SvPVX(pkg) + 1;
-	SvPVX(pkg)[SvCUR(pkg)] = '\0';
-    }
-
-    HV *stash = gv_stashsv(pkg, TRUE);
-    SvREFCNT_dec(pkg);
-    return stash;
-
-}   /* GetWin32OleStash */
-
 #if defined (__cplusplus)
 }
 #endif
@@ -2327,7 +2393,7 @@ PPCODE:
 
     if (items == 3)
 	destroy = CheckDestroyFunction(PERL_OBJECT_THIS_ ST(2),
-				       "Win32::OLE::new");
+				       "Win32::OLE->new");
 
     ST(0) = &PL_sv_undef;
 
@@ -2711,8 +2777,8 @@ PPCODE:
     if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "GetActiveObject"))
 	return;
 
-    if (items != 2) {
-	warn("Usage: Win32::OLE->GetActiveObject(progid)");
+    if (items < 2 || items > 3) {
+	warn("Usage: Win32::OLE->GetActiveObject(progid[,destroy])");
 	DEBUGBREAK;
 	XSRETURN_UNDEF;
     }
@@ -2720,16 +2786,15 @@ PPCODE:
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
     SV *progid = ST(1);
+    SV *destroy = NULL;
     UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
-
-    if (!SvPOK(self)) {
-	warn("Win32::OLE->GetActiveObject: Must be called as a class method");
-	DEBUGBREAK;
-	XSRETURN_UNDEF;
-    }
 
     Initialize(PERL_OBJECT_THIS_ stash);
     SetLastOleError(PERL_OBJECT_THIS_ stash);
+
+    if (items == 3)
+	destroy = CheckDestroyFunction(PERL_OBJECT_THIS_ ST(2),
+				       "Win32::OLE->GetActiveObject");
 
     buffer = SvPV(progid, length);
     pBuffer = GetWideChar(PERL_OBJECT_THIS_ buffer, Buffer, OLE_BUF_SIZ, cp);
@@ -2751,7 +2816,7 @@ PPCODE:
     if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, NULL);
+    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, destroy);
     DBG(("Win32::OLE::GetActiveObject |%lx| |%lx|\n", ST(0), pDispatch));
     XSRETURN(1);
 }
@@ -2773,8 +2838,8 @@ PPCODE:
     if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "GetObject"))
 	return;
 
-    if (items != 2) {
-	warn("Usage: Win32::OLE->GetObject(pathname)");
+    if (items < 2 || items > 3) {
+	warn("Usage: Win32::OLE->GetObject(pathname[,destroy])");
 	DEBUGBREAK;
 	XSRETURN_UNDEF;
     }
@@ -2782,16 +2847,15 @@ PPCODE:
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
     SV *pathname = ST(1);
+    SV *destroy = NULL;
     UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
-
-    if (!SvPOK(self)) {
-	warn("Win32::OLE->GetObject: Must be called as a class method");
-	DEBUGBREAK;
-	XSRETURN_UNDEF;
-    }
 
     Initialize(PERL_OBJECT_THIS_ stash);
     SetLastOleError(PERL_OBJECT_THIS_ stash);
+
+    if (items == 3)
+	destroy = CheckDestroyFunction(PERL_OBJECT_THIS_ ST(2),
+				       "Win32::OLE->GetObject");
 
     hr = CreateBindCtx(0, &pBindCtx);
     if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
@@ -2816,7 +2880,7 @@ PPCODE:
     if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, NULL);
+    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, destroy);
     XSRETURN(1);
 }
 
@@ -3286,6 +3350,104 @@ PPCODE:
 
     pTypeLib->Release();
 
+    XSRETURN(1);
+}
+
+void
+_Typelibs(self)
+    SV *self
+PPCODE:
+{
+    HKEY hKeyTypelib;
+    FILETIME ft;
+    LONG err;
+
+    err = RegOpenKeyEx(HKEY_CLASSES_ROOT, "Typelib", 0, KEY_READ, &hKeyTypelib);
+    if (err != ERROR_SUCCESS) {
+	warn("Cannot access HKEY_CLASSES_ROOT\\Typelib");
+	XSRETURN_UNDEF;
+    }
+
+    AV *res = newAV();
+
+    // Enumerate all Clsids
+    for (DWORD dwClsid=0;; ++dwClsid) {
+	char szClsid[100];
+	DWORD cbClsid = sizeof(szClsid);
+	err = RegEnumKeyEx(hKeyTypelib, dwClsid, szClsid, &cbClsid,
+			   NULL, NULL, NULL, &ft);
+	if (err != ERROR_SUCCESS)
+	    break;
+
+	HKEY hKeyClsid;
+	err = RegOpenKeyEx(hKeyTypelib, szClsid, 0, KEY_READ, &hKeyClsid);
+	if (err != ERROR_SUCCESS)
+	    continue;
+
+	// Enumerate versions for current clsid
+	for (DWORD dwVersion=0;; ++dwVersion) {
+	    char szVersion[10];
+	    DWORD cbVersion = sizeof(szVersion);
+	    err = RegEnumKeyEx(hKeyClsid, dwVersion, szVersion, &cbVersion,
+			       NULL, NULL, NULL, &ft);
+	    if (err != ERROR_SUCCESS)
+		break;
+
+	    HKEY hKeyVersion;
+	    err = RegOpenKeyEx(hKeyClsid, szVersion, 0, KEY_READ, &hKeyVersion);
+	    if (err != ERROR_SUCCESS)
+		continue;
+
+	    char szTitle[300];
+	    LONG cbTitle = sizeof(szTitle);
+	    err = RegQueryValue(hKeyVersion, NULL, szTitle, &cbTitle);
+	    if (err != ERROR_SUCCESS || cbTitle <= 1)
+		continue;
+	    
+	    // Enumerate languages
+	    for (DWORD dwLangid=0;; ++dwLangid) {
+		char szLangid[10];
+		DWORD cbLangid = sizeof(szLangid);
+		err = RegEnumKeyEx(hKeyVersion, dwLangid, szLangid, &cbLangid,
+				   NULL, NULL, NULL, &ft);
+		if (err != ERROR_SUCCESS)
+		    break;
+
+		// Language ids must be strictly numeric
+		char *psz=szLangid;
+		while (isDIGIT(*psz))
+		    ++psz;
+		if (*psz)
+		    continue;
+
+		HKEY hKeyLangid;
+		err = RegOpenKeyEx(hKeyVersion, szLangid, 0, KEY_READ, &hKeyLangid);
+		if (err != ERROR_SUCCESS)
+		    continue;
+
+		// Retrieve filename of type library
+		char szFile[MAX_PATH+1];
+		LONG cbFile = sizeof(szFile);
+		err = RegQueryValue(hKeyLangid, "win32", szFile, &cbFile);
+		if (err == ERROR_SUCCESS && cbFile > 1) {
+		    AV *av = newAV();
+		    av_push(av, newSVpv(szClsid, cbClsid));
+		    av_push(av, newSVpv(szTitle, cbTitle));
+		    av_push(av, newSVpv(szVersion, cbVersion));
+		    av_push(av, newSVpv(szLangid, cbLangid));
+		    av_push(av, newSVpv(szFile, cbFile-1));
+		    av_push(res, newRV_noinc((SV*)av));
+		}
+
+		RegCloseKey(hKeyLangid);
+	    }
+	    RegCloseKey(hKeyVersion);
+	}
+	RegCloseKey(hKeyClsid);
+    }
+    RegCloseKey(hKeyTypelib);
+
+    ST(0) = sv_2mortal(newRV_noinc((SV*)res));
     XSRETURN(1);
 }
 
@@ -4234,18 +4396,9 @@ PPCODE:
 	XSRETURN_EMPTY;
     }
 
-    WINOLETYPEINFOOBJECT *pInfoObj;
-    New(0, pInfoObj, 1, WINOLETYPEINFOOBJECT);
-
-    pInfoObj->pTypeInfo = pTypeInfo;
-    pInfoObj->pTypeAttr = pTypeAttr;
-
-    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pInfoObj,
-		     WINOLETYPEINFO_MAGIC);
-
-    SV *sv = newSViv((IV)pInfoObj);
-    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv),
-				gv_stashpv(szWINOLETYPEINFO, TRUE)));
+    HV *stash = gv_stashpv(szWINOLETYPEINFO, TRUE);
+    ST(0) = sv_2mortal(CreateTypeInfoObject(PERL_OBJECT_THIS_ pTypeInfo,
+					    pTypeAttr, stash));
     XSRETURN(1);
 }
 
@@ -4268,33 +4421,24 @@ PPCODE:
 
     unsigned int count;
     HRESULT hr = pOleObj->pDispatch->GetTypeInfoCount(&count);
-    HV *stash = SvSTASH(pOleObj->self);
-    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr) || count == 0)
+    HV *olestash = SvSTASH(pOleObj->self);
+    if (CheckOleError(PERL_OBJECT_THIS_ olestash, hr) || count == 0)
         XSRETURN_UNDEF;
 	
     hr = pOleObj->pDispatch->GetTypeInfo(0, lcidDefault, &pTypeInfo);
-    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
+    if (CheckOleError(PERL_OBJECT_THIS_ olestash, hr))
         XSRETURN_UNDEF;
 
     hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
     if (FAILED(hr)) {
 	pTypeInfo->Release();
-	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
+	ReportOleError(PERL_OBJECT_THIS_ olestash, hr);
 	XSRETURN_EMPTY;
     }
 
-    WINOLETYPEINFOOBJECT *pObj;
-    New(0, pObj, 1, WINOLETYPEINFOOBJECT);
-
-    pObj->pTypeInfo = pTypeInfo;
-    pObj->pTypeAttr = pTypeAttr;
-
-    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pObj,
-		     WINOLETYPEINFO_MAGIC);
-
-    SV *sv = newSViv((IV)pObj);
-    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv),
-				GetStash(PERL_OBJECT_THIS_ self)));
+    HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+    ST(0) = sv_2mortal(CreateTypeInfoObject(PERL_OBJECT_THIS_ pTypeInfo,
+					    pTypeAttr, stash));
     XSRETURN(1);
 }
 
@@ -4368,7 +4512,7 @@ PPCODE:
     hv_store(hv, "wFuncFlags",   10, newSViv(p->wFuncFlags), 0);
 
     HV *elemdesc = TranslateElemDesc(PERL_OBJECT_THIS_ &p->elemdescFunc, 
-				     olestash);
+				     pObj, olestash);
     hv_store(hv, "elemdescFunc", 12, newRV_noinc((SV*)elemdesc), 0);
 
     if (p->cParams > 0) {
@@ -4376,7 +4520,8 @@ PPCODE:
 
 	for (int i = 0; i < p->cParams; ++i) {
 	    elemdesc = TranslateElemDesc(PERL_OBJECT_THIS_
-					 &p->lprgelemdescParam[i], olestash);
+					 &p->lprgelemdescParam[i],
+					 pObj, olestash);
 	    av_push(av, newRV_noinc((SV*)elemdesc));
 	}
 	hv_store(hv, "rgelemdescParam", 15, newRV_noinc((SV*)av), 0);
@@ -4519,3 +4664,45 @@ PPCODE:
     ST(0) = sv_2mortal(newRV_noinc((SV*)hv));
     XSRETURN(1);
 }
+
+void
+_GetVarDesc(self,index)
+    SV *self
+    IV index
+PPCODE:
+{
+    WINOLETYPEINFOOBJECT *pObj = GetOleTypeInfoObject(PERL_OBJECT_THIS_ self);
+    if (pObj == NULL)
+	XSRETURN_EMPTY;
+
+    VARDESC *p;
+    HV *olestash = GetWin32OleStash(PERL_OBJECT_THIS_ self);
+    HRESULT hr = pObj->pTypeInfo->GetVarDesc(index, &p);
+    if (CheckOleError(PERL_OBJECT_THIS_ olestash, hr))
+	XSRETURN_EMPTY;
+
+    HV *hv = newHV();
+    hv_store(hv, "memid",        5, newSViv(p->memid), 0);
+    // LPOLESTR lpstrSchema;
+    hv_store(hv, "wVarFlags",    9, newSViv(p->wVarFlags), 0);
+    hv_store(hv, "varkind",      7, newSViv(p->varkind), 0);
+
+    HV *elemdesc = TranslateElemDesc(PERL_OBJECT_THIS_ &p->elemdescVar,
+				     pObj, olestash);
+    hv_store(hv, "elemdescVar", 11, newRV_noinc((SV*)elemdesc), 0);
+
+    if (p->varkind == VAR_PERINSTANCE)
+	hv_store(hv, "oInst",    5, newSViv(p->oInst), 0);
+
+    if (p->varkind == VAR_CONST) {
+	// XXX should be stored as a Win32::OLE::Variant object ?
+	SV *sv = newSVpv("",0);
+	SetSVFromVariantEx(PERL_OBJECT_THIS_ p->lpvarValue, sv, olestash);
+	hv_store(hv, "varValue", 8, sv, 0);
+    }
+
+    pObj->pTypeInfo->ReleaseVarDesc(p);
+    ST(0) = sv_2mortal(newRV_noinc((SV*)hv));
+    XSRETURN(1);
+}
+

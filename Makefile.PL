@@ -5,13 +5,11 @@ my @MM =
 (
  'NAME'	        => 'Win32::OLE',
  'VERSION_FROM' => 'OLE.pm',
- 'PREREQ_PM'    => { 'Win32::Registry' => 0 },
  'PM'           => { 'OLE.pm'      => '$(INST_LIBDIR)/OLE.pm',
 		     'Lite.pm'     => '$(INST_LIBDIR)/OLE/Lite.pm',
 		     'Const.pm'    => '$(INST_LIBDIR)/OLE/Const.pm',
 		     'Enum.pm'     => '$(INST_LIBDIR)/OLE/Enum.pm',
 		     'NLS.pm'      => '$(INST_LIBDIR)/OLE/NLS.pm',
-		     'TypeInfo.pm' => '$(INST_LIBDIR)/OLE/TypeInfo.pm',
 		     'Variant.pm'  => '$(INST_LIBDIR)/OLE/Variant.pm',
 		     # Compatibility layer: toplevel OLE.pm
 		     'Compat.pm'   => '$(INST_LIBDIR)/../OLE.pm',
@@ -36,10 +34,10 @@ if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
 
 # XXX Enable this when MakeMaker supports 'FUNCLIST'
 if ($ExtUtils::MakeMaker::VERSION >= 5.4302) {
-    push @MM, 'FUNCLIST' => [qw(SetSVFromVariant SetVariantFromSV CreatePerlObject)];
+    push @MM, 'FUNCLIST' => [qw(SetSVFromVariant SetSVFromVariantEx SetVariantFromSV CreatePerlObject)];
 }
 
-my $FUNCLIST = [qw(SetSVFromVariant SetVariantFromSV CreatePerlObject)];
+my $FUNCLIST = [qw(SetSVFromVariant SetSVFromVariantEx SetVariantFromSV CreatePerlObject)];
 
 WriteMakefile(@MM);
 

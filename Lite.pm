@@ -40,8 +40,6 @@ sub COINIT_APARTMENTTHREADED  {2;}  # Use single threaded apartment model
 
 # Bogus COINIT_* values to indicate special cases:
 sub COINIT_OLEINITIALIZE      {-1;} # Use OleInitialize instead of CoInitializeEx
-sub COINIT_ALREADYINITIALIZED {-2;} # COM is already initialied; don't do it again
-
 
 # CreateObject is defined here only because it is documented in the
 # "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().
