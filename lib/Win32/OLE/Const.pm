@@ -16,7 +16,7 @@ sub import {
 
 sub EnumTypeLibs {
     my ($self,$callback) = @_;
-    &$callback(@$_) foreach @$Typelibs;
+    foreach (@$Typelibs) { &$callback(@$_) }
     return;
 }
 

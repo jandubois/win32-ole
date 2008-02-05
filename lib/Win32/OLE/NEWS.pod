@@ -36,18 +36,6 @@ value is +/-79,228,162,514,264,337,593,543,950,335.  With a 28 decimal
 places, the largest value is +/-7.9228162514264337593543950335 and the
 smallest, non-zero value is +/-0.0000000000000000000000000001.
 
-=head2 numerical Variant operations overloaded
-
-Addition, subtraction, multiplication and division of variants are now
-overloaded.  This means that the variant values are not converted into
-Perls numbers first.  Therefore the additional precision of
-e.g. VT_DECIMAL variants is maintained:
-
-  perl -MWin32::OLE::Variant -e"print Variant(VT_DECIMAL,
-                                '79228162514264337593543950335')-1"
-
-prints the number 79228162514264337593543950334.
-
 =head1 Version 0.1008
 
 =head2 new LetProperty() object method

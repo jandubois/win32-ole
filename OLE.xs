@@ -2452,7 +2452,7 @@ AssignVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	    SafeArrayGetUBound(psa, 1, &lUpper);
 
 	    long lLength = 1 + lUpper-lLower;
-	    len = min(len, lLength);
+	    len = (len < lLength ? len : lLength);
 	    memcpy(pDest, pSrc, len);
 	    if (lLength > len)
 		memset(pDest+len, 0, lLength-len);
@@ -4920,75 +4920,6 @@ PPCODE:
     }
 
     XSRETURN_EMPTY;
-}
-
-void
-Add(left,right,swap)
-    SV *left
-    SV *right
-    SV *swap
-ALIAS:
-    Sub = 1
-    Mul = 2
-    Div = 3
-PPCODE:
-{
-    WINOLEVARIANTOBJECT *pLeft = GetOleVariantObject(THIS_ left);
-    if (!pLeft)
-	XSRETURN_EMPTY;
-
-    VARIANT *pVarLeft = &pLeft->variant;
-    VARIANT *pVarRight;
-    VARIANT temp;
-    VariantInit(&temp);
-
-    WINOLEVARIANTOBJECT *pRight = GetOleVariantObject(THIS_ right, FALSE);
-    if (pRight) {
-	pVarRight = &pRight->variant;
-    }
-    else {
-	HV *olestash = GetWin32OleStash(THIS_ left);
-	UINT cp = QueryPkgVar(THIS_ olestash, CP_NAME, CP_LEN, cpDefault);
-	LCID lcid = QueryPkgVar(THIS_ olestash, LCID_NAME, LCID_LEN,
-				lcidDefault);
-	pVarRight = &temp;
-	HRESULT hr = SetVariantFromSVEx(THIS_ right, pVarRight, cp, lcid);
-	if (CheckOleError(THIS_ olestash, hr))
-	    XSRETURN_EMPTY;
-    }
-
-    if (SvTRUE(swap)) {
-	VARIANT *pVarTemp = pVarLeft;
-	pVarLeft = pVarRight;
-	pVarRight = pVarTemp;
-    }
-
-    WINOLEVARIANTOBJECT *pResult;
-    Newz(0, pResult, 1, WINOLEVARIANTOBJECT);
-    VariantInit(&pResult->variant);
-    VariantInit(&pResult->byref);
-
-    HRESULT hr = E_NOTIMPL;
-    switch (ix) {
-    case 0: hr = VarAdd(pVarLeft, pVarRight, &pResult->variant); break;
-    case 1: hr = VarSub(pVarLeft, pVarRight, &pResult->variant); break;
-    case 2: hr = VarMul(pVarLeft, pVarRight, &pResult->variant); break;
-    case 3: hr = VarDiv(pVarLeft, pVarRight, &pResult->variant); break;
-    }
-    VariantClear(&temp);
-    if (FAILED(hr)) {
-	HV *olestash = GetWin32OleStash(THIS_ left);
-	Safefree(pResult);
-	ReportOleError(THIS_ olestash, hr);
-	XSRETURN_EMPTY;
-    }
-
-    AddToObjectChain(THIS_ (OBJECTHEADER*)pResult, WINOLEVARIANT_MAGIC);
-
-    HV *stash = GetStash(THIS_ left);
-    SV *sv = newSViv((IV)pResult);
-    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
-    XSRETURN(1);
 }
 
 void

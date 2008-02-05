@@ -69,14 +69,15 @@ sub MY::post_constants {
     my @files = qw(Browser.dhtml Browser.html Class.png Const.png Default.png
                    Enum.png Event.png Function.png Global.png Help.png
                    Library.png Module.png Property.png Type.png);
-    my $m = '
-INST_BROWSER = blib\html\lib\site\Win32\OLE
-BROWSER_FILES =';
-    $m .= "\t\\\n\tbrowser\\$_" foreach @files;
+    my $pfx = (-f '../Win32.xs') ? "..\\" : "";
+    my $m = "
+INST_BROWSER = ${pfx}blib\\html\\lib\\site\\Win32\\OLE
+BROWSER_FILES =";
+    for (@files) { $m .= "\t\\\n\tbrowser\\$_" }
     $m .= '
 
 BROWSER_TO_BLIB =';
-    $m .= "\t\\\n\tbrowser\\$_ \$(INST_BROWSER)\\$_" foreach @files;
+    for (@files) { $m .= "\t\\\n\tbrowser\\$_ \$(INST_BROWSER)\\$_" }
     return $m."\n\n";
 }
 
@@ -88,10 +89,15 @@ browser_to_blib : $(BROWSER_FILES)
 	@$(MKPATH) $(INST_BROWSER)
 	@$(PERL) "-I$(INST_ARCHLIB)" "-I$(INST_LIB)" \
 	"-I$(PERL_ARCHLIB)" "-I$(PERL_LIB)" -MExtUtils::Install \
-        -e "pm_to_blib(qw[ <<pmfiles.dat ],'$(INST_LIB)\auto')"
+        -e "pm_to_blib(}.
+	($Config{make} =~ /^dmake/i
+	 ? 'qw[ $(mktmp,pmfiles.dat $(BROWSER_TO_BLIB:s,\\,\\\\,)\n) ],'
+	 : 'qw[ <<pmfiles.dat ],'
+	).q{'$(INST_LIB)\auto')"
+	}. ($Config{make} =~ /^dmake/i ? '' : q{
 $(BROWSER_TO_BLIB)
 <<
-	@$(TOUCH) $@
+	}) . q{@$(TOUCH) $@
 
 };
 }

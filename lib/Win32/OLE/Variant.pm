@@ -45,7 +45,7 @@ sub CP_ACP   {0;}     # ANSI codepage
 sub CP_OEMCP {1;}     # OEM codepage
 
 use overload
-    '+' => 'Add', '-' => 'Sub', '*' => 'Mul', '/' => 'Div',
+    # '+' => 'Add', '-' => 'Sub', '*' => 'Mul', '/' => 'Div',
     '""'     => sub {$_[0]->As(VT_BSTR)},
     '0+'     => sub {$_[0]->As(VT_R8)},
     fallback => 1;

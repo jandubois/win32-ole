@@ -3,7 +3,10 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
-0.11    libwin32-0.15 / ActivePerl build 520
+0.1101	libwin32-0.15 / ActivePerl build 520
+	- VarAdd() etc. temporarily removed for VC++ 5.0 compatibility
+
+0.11    on CPAN
 	- reorganization of Win32::OLE::Type* packages
 	- Win32::OLE::Const now uses Win32::OLE::Type* packages
 	- Win32::OLE::Const now uses LoadTypeLibEx to avoid registering
