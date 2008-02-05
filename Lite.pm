@@ -45,6 +45,13 @@ sub COINIT_APARTMENTTHREADED {2;}  # Use single threaded apartment model
 
 # Bogus COINIT_* values to indicate special cases:
 sub COINIT_OLEINITIALIZE     {-1;} # Use OleInitialize instead of CoInitializeEx
+sub COINIT_NO_INITIALIZE     {-2;} # We are already initialized, just believe me
+
+sub HRESULT {
+    my $hr = shift;
+    $hr -= 2**32 if $hr & 0x80000000;
+    return $hr;
+}
 
 # CreateObject is defined here only because it is documented in the
 # "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().
@@ -105,24 +112,31 @@ sub Option {
 }
 
 sub Invoke {
-    my ($self, $method, @args) = @_;
+    my ($self,$method,@args) = @_;
     my $retval;
     $self->Dispatch($method, $retval, @args);
     return $retval;
 }
 
+sub LetProperty {
+    my ($self,$method,@args) = @_;
+    my $retval;
+    $self->Dispatch([DISPATCH_PROPERTYPUT, $method], $retval, @args);
+    return $retval;
+}
+
 sub SetProperty {
-    my ($self, $method, @args) = @_;
+    my ($self,$method,@args) = @_;
     my $retval;
     my $wFlags = DISPATCH_PROPERTYPUT;
     if (@args) {
-	# If the value is an object then it must be set by reference!
-	my $value = $args[scalar(@args)-1];
+	# If the value is an object then it will be set by reference!
+	my $value = $args[-1];
 	if (UNIVERSAL::isa($value, 'Win32::OLE')) {
 	    $wFlags = DISPATCH_PROPERTYPUTREF;
 	}
 	elsif (UNIVERSAL::isa($value,'Win32::OLE::Variant')) {
-	    my $type = $value->Type;
+	    my $type = $value->Type & ~0xfff; # VT_TYPEMASK
 	    # VT_DISPATCH and VT_UNKNOWN represent COM objects
 	    $wFlags = DISPATCH_PROPERTYPUTREF if $type == 9 || $type == 13;
 	}

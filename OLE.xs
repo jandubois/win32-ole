@@ -5,7 +5,7 @@
  *  ActiveState Tool Corp., http://www.ActiveState.com
  *
  *  Other modifications Copyright (c) 1997-1999 by Gurusamy Sarathy
- *  <gsar@umich.edu> and Jan Dubois <jan.dubois@ibm.net>
+ *  <gsar@activestate.com> and Jan Dubois <jan.dubois@ibm.net>
  *
  *  You may distribute under the terms of either the GNU General Public
  *  License or the Artistic License, as specified in the README file.
@@ -131,6 +131,7 @@ static char TIE_NAME[] = "Tie";
 static const int TIE_LEN = sizeof(TIE_NAME)-1;
 
 #define COINIT_OLEINITIALIZE -1
+#define COINIT_NO_INITIALIZE -2
 
 typedef HRESULT (STDAPICALLTYPE FNCOINITIALIZEEX)(LPVOID, DWORD);
 typedef void (STDAPICALLTYPE FNCOUNINITIALIZE)(void);
@@ -2253,8 +2254,7 @@ AssignVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	    psa = V_ARRAY(pVariant);
 
 	UINT cDims = SafeArrayGetDim(psa);
-	VARTYPE vt_base = vt & ~VT_BYREF & ~VT_ARRAY;
-	if (vt_base != VT_UI1 || cDims != 1 || !SvPOK(sv)) {
+	if ((vt & VT_TYPEMASK) != VT_UI1 || cDims != 1 || !SvPOK(sv)) {
 	    warn(MY_VERSION ": AssignVariantFromSV() cannot assign to "
 		 "VT_ARRAY variant");
 	    return E_INVALIDARG;
@@ -2494,7 +2494,7 @@ SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	V_VT(&variant) = (vt & ~VT_ARRAY) | VT_BYREF;
 
 	/* convert 1-dim UI1 ARRAY to simple SvPV */
-	if (dim == 1 && (vt & ~VT_ARRAY & ~VT_BYREF) == VT_UI1) {
+	if (dim == 1 && (vt & VT_TYPEMASK) == VT_UI1) {
 	    char *pStr;
 	    long lLower, lUpper;
 
@@ -2734,14 +2734,14 @@ Initialize(CPERLarg_ HV *stash, DWORD dwCoInit=COINIT_MULTITHREADED)
 	g_pfnCoUninitialize = NULL;
 	g_bInitialized = TRUE;
 
-	DBG(("(Co|Ole)Initialize(Ex)?\n"));
+	DBG(("Initialize dwCoInit=%d\n", dwCoInit));
 
 	if (dwCoInit == COINIT_OLEINITIALIZE) {
 	    hr = OleInitialize(NULL);
 	    if (SUCCEEDED(hr))
 		g_pfnCoUninitialize = &OleUninitialize;
 	}
-	else {
+	else if (dwCoInit != COINIT_NO_INITIALIZE) {
 	    if (g_pfnCoInitializeEx)
 		hr = g_pfnCoInitializeEx(NULL, dwCoInit);
 	    else
@@ -2844,6 +2844,7 @@ AtExit(CPERLarg_ void *pVoid)
 void
 Bootstrap(CPERLarg)
 {
+    dSP;
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
     PERINTERP *pInterp;
     New(0, pInterp, 1, PERINTERP);
@@ -2874,9 +2875,14 @@ Bootstrap(CPERLarg)
 	    GetProcAddress(g_hOLE32, "CoCreateInstanceEx");
     }
 
-    SV *cmd = sv_newmortal();
+    SV *cmd = newSVpv("", 0);
     sv_setpvf(cmd, "END { %s->Uninitialize(%d); }", szWINOLE, WINOLE_MAGIC );
-    perl_eval_sv(cmd, TRUE);
+
+    PUSHMARK(sp);
+    perl_eval_sv(cmd, G_DISCARD);
+    SPAGAIN;
+
+    SvREFCNT_dec(cmd);
 
 #if (PATCHLEVEL > 4) || (SUBVERSION >= 68)
     perl_atexit(AtExit, INTERP);
@@ -3967,7 +3973,7 @@ PPCODE:
 	USHORT wFlags = DISPATCH_PROPERTYPUT;
 
 	/* objects are passed by reference */
-	VARTYPE vt = V_VT(&propertyValue[0]);
+	VARTYPE vt = V_VT(&propertyValue[0]) & VT_TYPEMASK;
 	if (vt == VT_DISPATCH || vt == VT_UNKNOWN)
 	    wFlags = DISPATCH_PROPERTYPUTREF;
 
@@ -4466,7 +4472,7 @@ PPCODE:
     HV *olestash = GetWin32OleStash(THIS_ self);
     SetLastOleError(THIS_ olestash);
 
-    VARTYPE vt_base = vt & ~VT_BYREF & ~VT_ARRAY;
+    VARTYPE vt_base = vt & VT_TYPEMASK;
     if (!data && vt_base != VT_NULL && vt_base != VT_EMPTY) {
 	warn(MY_VERSION ": Win32::OLE::Variant->new(vt, data): data may be"
 	     " omitted only for VT_NULL or VT_EMPTY");
@@ -4684,7 +4690,7 @@ PPCODE:
 	for (int iDim=0; iDim < cDims; ++iDim)
             rgIndices[iDim] = SvIV(ST(1+iDim));
 
-	VARTYPE vt_base = V_VT(pSource) & ~VT_BYREF & ~VT_ARRAY;
+	VARTYPE vt_base = V_VT(pSource) & VT_TYPEMASK;
 	V_VT(&variant) = vt_base | VT_BYREF;
 	V_VT(&byref) = vt_base;
 	if (vt_base == VT_VARIANT)
@@ -5085,7 +5091,7 @@ PPCODE:
     UINT cDims = SafeArrayGetDim(psa);
 
     /* Special case for one-dimensional VT_UI1 arrays */
-    VARTYPE vt_base = V_VT(pVariant) & ~VT_BYREF & ~VT_ARRAY;
+    VARTYPE vt_base = V_VT(pVariant) & VT_TYPEMASK;
     if (vt_base == VT_UI1 && cDims == 1 && items-1 == ix)
         goto scalar_mode;
 

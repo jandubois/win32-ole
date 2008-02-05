@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1007';
+$VERSION = '0.1008';
 
 use Carp;
 use Exporter;
@@ -14,7 +14,7 @@ use DynaLoader;
 @ISA = qw(Exporter DynaLoader);
 
 @EXPORT = qw();
-@EXPORT_OK = qw(in valof with EVENTS OVERLOAD
+@EXPORT_OK = qw(in valof with HRESULT EVENTS OVERLOAD
                 CP_ACP CP_OEMCP CP_MACCP CP_UTF7 CP_UTF8
 		DISPATCH_METHOD DISPATCH_PROPERTYGET
 		DISPATCH_PROPERTYPUT DISPATCH_PROPERTYPUTREF);
@@ -186,13 +186,37 @@ native Invoke() method (if such a thing exists), please use:
 The LastError() class method returns the last recorded OLE
 error. This is a dual value like the C<$!> variable: in a numeric
 context it returns the error number and in a string context it returns
-the error message.
+the error message. The error number is a signed HRESULT value. Please
+use the L<HRESULT(ERROR)> function to convert an unsigned hexadecimal
+constant to a signed HRESULT.
 
 The last OLE error is automatically reset by a successful OLE
 call. The numeric value can also explicitly be set by a call (which will
 discard the string value):
 
 	Win32::OLE->LastError(0);
+
+=item OBJECT->LetProperty(NAME,ARGS,VALUE)
+
+In Win32::OLE property assignment using the hash syntax is equivalent
+to the Visual Basic C<Set> syntax (I<by reference> assignment):
+
+	$Object->{Property} = $OtherObject;
+
+corresponds to this Visual Basic statement:
+
+	Set Object.Property = OtherObject
+
+To get the I<by value> treatment of the Visual Basic C<Let> statement
+
+	Object.Property = OtherObject
+
+you have to use the LetProperty() object method in Perl:
+
+	$Object->LetProperty($Property, $OtherObject);
+
+LetProperty() also supports optional arguments for the property assignment.
+See L<OBJECT->SetProperty(NAME,ARGS,VALUE)> for details.
 
 =item Win32::OLE->Option(OPTION)
 
@@ -224,7 +248,10 @@ is equivalent to
 
 	$Object->SetProperty('Property', $Value);
 
-Arguments must be specified between the property name and the new value.
+Arguments must be specified between the property name and the new value:
+
+	$Object->SetProperty('Property', @Args, $Value);
+
 It is not possible to use "named argument" syntax with this function
 because the new value must be the last argument to SetProperty().
 
@@ -314,6 +341,17 @@ and property access can be chained as shown in the examples below.
 The following functions are not exported by default.
 
 =over 8
+
+=item HRESULT(ERROR)
+
+The HRESULT() function converts an unsigned number into a signed HRESULT
+error value as used by OLE internally. This is necessary because Perl
+treats all hexadecimal constants as unsigned. To check if the last OLE
+function returned "Member not found" (0x80020003) you can write:
+
+	if (Win32::OLE->LastError == HRESULT(0x80020003)) {
+	    # your error recovery here
+	}
 
 =item in(COLLECTION)
 
@@ -812,6 +850,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.1007	  25 April 1999
+Version 0.1008	  4 May 1999
 
 =cut

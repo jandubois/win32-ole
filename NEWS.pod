@@ -1,10 +1,50 @@
 =pod
 
-=head1 NEWS - What's new in Win32::OLE
+=head1 NAME
+
+Win32::OLE::NEWS - What's new in Win32::OLE
 
 This file contains a history of user visible changes to the Win32::OLE::*
 modules. Only new features and major bug that might affect backwards
 compatibilityfixes are included.
+
+=head1 Version 0.1008
+
+=head2 New features
+
+=over 8
+
+=item new LetProperty() object method
+
+In Win32::OLE property assignment using the hash syntax is equivalent
+to the Visual Basic C<Set> syntax (I<by reference> assignment):
+
+	$Object->{Property} = $OtherObject;
+
+corresponds to this Visual Basic statement:
+
+	Set Object.Property = OtherObject
+
+To get the I<by value> treatment of the Visual Basic C<Let> statement
+
+	Object.Property = OtherObject
+
+you have to use the LetProperty() object method in Perl:
+
+	$Object->LetProperty($Property, $OtherObject);
+
+=item new HRESULT() function
+
+The HRESULT() function converts an unsigned number into a signed HRESULT
+error value as used by OLE internally. This is necessary because Perl
+treats all hexadecimal constants as unsigned. To check if the last OLE
+function returned "Member not found" (0x80020003) you can write:
+
+	if (Win32::OLE->LastError == HRESULT(0x80020003)) {
+	    # your error recovery here
+	}
+
+=back
 
 =head1 Version 0.1007 (changes since 0.1005)
 
@@ -129,6 +169,43 @@ all objects at program termination I<before> the Perl's global destruction
 starts. Objects still existing at program termination are now destroyed in
 reverse order of creation. The effect is similar to explicitly calling
 Win32::OLE->Uninitialize() just prior to termination.
+
+=back
+
+=head1 Version 0.1005 (changes since 0.1003)
+
+Win32::OLE 0.1005 has been release with ActivePerl build 509. It is also
+included in the I<Perl Resource Kit for Win32> Update.
+
+=head2 New features
+
+=over 8
+
+=item optional DESTRUCTOR for GetActiveObject() GetObject() class methods
+
+The GetActiveObject() and GetObject() class method now also support an
+optional DESTRUCTOR parameter just like Win32::OLE->new(). The DESTRUCTOR
+is executed when the last reference to this object goes away. It is
+generally considered C<impolite> to stop applications that you did not
+start yourself.
+
+=item new Variant object method: $object->Copy()
+
+See L<Win32::OLE::Variant/Copy([DIM])>.
+
+=item new Win32::OLE->Option() class method
+
+The Option() class method can be used to inspect and modify
+L<Win32::OLE/Module Options>. The single argument form retrieves
+the value of an option:
+
+	my $CP = Win32::OLE->Option('CP');
+
+A single call can be used to set multiple options simultaneously:
+
+	Win32::OLE->Option(CP => CP_ACP, Warn => 3);
+
+Currently the following options exist: CP, LCID and C<Warn>.
 
 =back
 

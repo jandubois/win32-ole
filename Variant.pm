@@ -140,7 +140,7 @@ The underlying variant object is NOT changed by this method.
 This method changes the type of the contained VARIANT in place. It
 returns the object itself, not the converted value.
 
-=item Copy(DIM)
+=item Copy([DIM])
 
 This method creates a copy of the object. If the original variant had
 the VT_BYREF bit set then the new object will contain a copy of the
@@ -156,7 +156,7 @@ in C<$Copy> and vice versa.
 
 The C<Copy> method can also be used to extract a single element of a
 VT_ARRAY | VT_VARIANT object. In this case the array indices must be
-specified as arguments:
+specified as a list DIM:
 
 	my $Int = $Var->Copy(1, 2);
 

@@ -3,6 +3,13 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1008	(unreleased)
+	- new LetProperty() method
+	- new COINIT_NO_INITIALIZE mode
+	- new HRESULT() function
+	- bug fix: SetProperty (incl. hash syntax) now uses PROPERTYPUTREF to
+	  assign a VT_BYREF | VT_DISPATCH object
+
 0.1007	Sun, April 25th, 1999
 	- patches from ActiveState for sample code in OLE.pm POD section
 	- Win32::OLE::Const now correctly treats version numbers as hex

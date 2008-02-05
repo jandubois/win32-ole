@@ -9,6 +9,7 @@ my @MM =
 		     'Lite.pm'     => '$(INST_LIBDIR)/OLE/Lite.pm',
 		     'Const.pm'    => '$(INST_LIBDIR)/OLE/Const.pm',
 		     'Enum.pm'     => '$(INST_LIBDIR)/OLE/Enum.pm',
+		     'NEWS.pod'    => '$(INST_LIBDIR)/OLE/NEWS.pod',
 		     'NLS.pm'      => '$(INST_LIBDIR)/OLE/NLS.pm',
 		     'TypeInfo.pm' => '$(INST_LIBDIR)/OLE/TypeInfo.pm',
 		     'Variant.pm'  => '$(INST_LIBDIR)/OLE/Variant.pm',
