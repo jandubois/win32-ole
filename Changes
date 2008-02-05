@@ -1,0 +1,13 @@
+Revision history for Perl extension Win32::OLE.
+
+0.01  Sat Apr  5 14:23:42 1997
+	- original version; created by h2xs 1.18
+	- imported Activeware version
+0.02  Sat May 10 15:40:52 1997
+	- cleaned up one big memory leakathon (DESTROY actually gets
+	  called now on all the objects)
+	- back to XS
+	- package names are Win32::OLE and Win32::OLE::Tie now
+	- fixed misplaced DESTROY
+	- implemented OLEUninitialize via DllMain
+
