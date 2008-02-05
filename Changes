@@ -10,4 +10,5 @@ Revision history for Perl extension Win32::OLE.
 	- package names are Win32::OLE and Win32::OLE::Tie now
 	- fixed misplaced DESTROY
 	- implemented OLEUninitialize via DllMain
-
+0.03  Sat Jul 12 16:10:07 1997
+	- DllEntryPoint for Borland

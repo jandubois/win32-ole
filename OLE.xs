@@ -752,7 +752,12 @@ Win32OLEPropertySet(SV *object, SV *propname, SV *val)
 }
 
 BOOL APIENTRY
-DllMain(HANDLE hModule, DWORD fdwReason, LPVOID lpvReserved)
+#ifdef __BORLANDC__
+DllEntryPoint
+#else
+DllMain
+#endif
+(HANDLE hModule, DWORD fdwReason, LPVOID lpvReserved)
 {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:

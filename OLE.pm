@@ -4,7 +4,7 @@
 
 package Win32::OLE;
 
-$VERSION = '0.02';
+$VERSION = '0.03';
 #use Carp;
 use Exporter;
 use DynaLoader;
