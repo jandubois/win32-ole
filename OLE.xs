@@ -1,7 +1,8 @@
 /* OLE.xs
  *
  *  (c) 1995 Microsoft Corporation. All rights reserved.
- *  Developed by ActiveWare Internet Corp., http://www.ActiveWare.com
+ *  Developed by ActiveWare Internet Corp., now known as
+ *  ActiveState Tool Corp., http://www.ActiveState.com
  *
  *  Other modifications Copyright (c) 1997, 1998 by Gurusamy Sarathy
  *  <gsar@umich.edu> and Jan Dubois <jan.dubois@ibm.net>
@@ -13,20 +14,16 @@
  * File structure:
  *
  * - C helper routines
- * - Package Win32::OLE           Constructor and method invokation
- * - Package Win32::OLE::Tie      Implements properties as tied hash
- * - Package Win32::OLE::Const    Load application constants from type library
- * - Package Win32::OLE::Enum     OLE collection enumeration
- * - Package Win32::OLE::Variant  Implements Perl VARIANT objects
- * - Package Win32::OLE::NLS      National Language Support
+ * - Package Win32::OLE             Constructor and method invocation
+ * - Package Win32::OLE::Tie        Implements properties as tied hash
+ * - Package Win32::OLE::Const      Load application constants from type library
+ * - Package Win32::OLE::Enum       OLE collection enumeration
+ * - Package Win32::OLE::Variant    Implements Perl VARIANT objects
+ * - Package Win32::OLE::NLS        National Language Support
  *
  */
 
-#ifdef XS_VERSION
-#   define MY_VERSION "Win32::OLE(" XS_VERSION ")"
-#else
-#   define MY_VERSION "Win32::OLE(?.??)"
-#endif
+#define MY_VERSION "Win32::OLE(" XS_VERSION ")"
 
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #define _WIN32_DCOM
@@ -44,6 +41,7 @@ extern "C" {
 #endif
 
 #define MIN_PERL_DEFINE
+#define NO_XSLOCKS
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSub.h"
@@ -62,8 +60,11 @@ extern "C" {
 #   define PL_sv_no     sv_no
 #endif
 
-#ifndef CPERLarg_
+#ifndef CPERLarg
+#   define CPERLarg
 #   define CPERLarg_
+#   define PERL_OBJECT_THIS
+#   define PERL_OBJECT_THIS_
 #endif
 
 #if !defined(_DEBUG)
@@ -75,9 +76,17 @@ MyDebug(const char *pat, ...)
 {
     va_list args;
     va_start(args, pat);
+
+#if 1
+    char szBuffer[512];
+    vsprintf(szBuffer, pat, args);
+    OutputDebugString(szBuffer);
+#else
     PerlIO_vprintf(PerlIO_stderr(), pat, args);
-    va_end(args);
     PerlIO_flush(PerlIO_stderr());
+#endif
+
+    va_end(args);
 }
 #endif
 
@@ -219,7 +228,7 @@ typedef struct
 }   WINOLEVARIANTOBJECT;
 
 /* forward declarations */
-HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
+HRESULT SetSVFromVariant(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash);
 
 /* The following function from IO.xs is in the core starting with 5.004_63 */
 #if (PATCHLEVEL == 4) && (SUBVERSION < 63)
@@ -254,7 +263,7 @@ newCONSTSUB(HV *stash, char *name, SV *sv)
 #endif
 
 BOOL
-IsLocalMachine(char *pszMachine)
+IsLocalMachine(CPERLarg_ char *pszMachine)
 {
     char szComputerName[MAX_COMPUTERNAME_LENGTH+1];
     DWORD dwSize = sizeof(szComputerName);
@@ -336,12 +345,12 @@ IsLocalMachine(char *pszMachine)
 }   /* IsLocalMachine */
 
 HRESULT
-CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
+CLSIDFromRemoteRegistry(CPERLarg_ char *pszHost, char *pszProgID, CLSID *pCLSID)
 {
     HKEY hKeyLocalMachine;
     HKEY hKeyProgID;
     LONG err;
-    HRESULT res = S_OK;
+    HRESULT hr = S_OK;
     STRLEN len;
 
     err = RegConnectRegistry(pszHost, HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
@@ -355,7 +364,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     err = RegOpenKeyEx(hKeyLocalMachine, SvPV(subkey, len), 0, KEY_READ,
 		       &hKeyProgID);
     if (err != ERROR_SUCCESS)
-	res = HRESULT_FROM_WIN32(err);
+	hr = HRESULT_FROM_WIN32(err);
     else {
 	DWORD dwType;
 	char szCLSID[100];
@@ -364,22 +373,22 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
 	err = RegQueryValueEx(hKeyProgID, "", NULL, &dwType,
 			      (unsigned char*)&szCLSID, &dwLength);
 	if (err != ERROR_SUCCESS)
-	    res = HRESULT_FROM_WIN32(err);
+	    hr = HRESULT_FROM_WIN32(err);
 	else if (dwType == REG_SZ) {
 	    OLECHAR wszCLSID[sizeof(szCLSID)];
 
 	    MultiByteToWideChar(CP_ACP, 0, szCLSID, -1,
 				wszCLSID, sizeof(szCLSID));
-	    res = CLSIDFromString(wszCLSID, pCLSID);
+	    hr = CLSIDFromString(wszCLSID, pCLSID);
 	}
 	else /* XXX maybe there is a more appropriate error code? */
-	    res = HRESULT_FROM_WIN32(ERROR_CANTREAD);
+	    hr = HRESULT_FROM_WIN32(ERROR_CANTREAD);
 
 	RegCloseKey(hKeyProgID);
     }
 
     RegCloseKey(hKeyLocalMachine);
-    return res;
+    return hr;
 
 }   /* CLSIDFromRemoteRegistry */
 
@@ -391,14 +400,14 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
  * The caller must free this buffer using the ReleaseBuffer function. */
 
 inline void
-ReleaseBuffer(void *pszHeap, void *pszStack)
+ReleaseBuffer(CPERLarg_ void *pszHeap, void *pszStack)
 {
     if (pszHeap != pszStack && pszHeap != NULL)
 	Safefree(pszHeap);
 }
 
 char *
-GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
+GetMultiByte(CPERLarg_ OLECHAR *wide, char *psz, int len, UINT cp)
 {
     int count;
 
@@ -433,22 +442,23 @@ GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
 }   /* GetMultiByte */
 
 SV *
-sv_setwide(SV *sv, OLECHAR *wide, UINT cp)
+sv_setwide(CPERLarg_ SV *sv, OLECHAR *wide, UINT cp)
 {
     char szBuffer[OLE_BUF_SIZ];
     char *pszBuffer;
 
-    pszBuffer = GetMultiByte(wide, szBuffer, sizeof(szBuffer), cp);
+    pszBuffer = GetMultiByte(PERL_OBJECT_THIS_ wide,
+			     szBuffer, sizeof(szBuffer), cp);
     if (sv == NULL)
 	sv = newSVpv(pszBuffer, 0);
     else
 	sv_setpv(sv, pszBuffer);
-    ReleaseBuffer(pszBuffer, szBuffer);
+    ReleaseBuffer(PERL_OBJECT_THIS_ pszBuffer, szBuffer);
     return sv;
 }
 
 OLECHAR *
-GetWideChar(char *psz, OLECHAR *wide, int len, UINT cp)
+GetWideChar(CPERLarg_ char *psz, OLECHAR *wide, int len, UINT cp)
 {
     /* Note: len is number of OLECHARs, not bytes! */
     int count;
@@ -484,7 +494,7 @@ GetWideChar(char *psz, OLECHAR *wide, int len, UINT cp)
 }   /* GetWideChar */
 
 IV
-QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
+QueryPkgVar(CPERLarg_ HV *stash, char *var, STRLEN len, IV def)
 {
     SV *sv;
     GV **gv = (GV **) hv_fetch(stash, var, len, FALSE);
@@ -498,7 +508,7 @@ QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
 }
 
 void
-SetLastOleError(HV *stash, HRESULT res=S_OK, char *pszMsg=NULL)
+SetLastOleError(CPERLarg_ HV *stash, HRESULT hr=S_OK, char *pszMsg=NULL)
 {
     STRLEN len;
 
@@ -514,7 +524,7 @@ SetLastOleError(HV *stash, HRESULT res=S_OK, char *pszMsg=NULL)
 	return;
     }
 
-    sv_setiv(lasterr, (IV)res);
+    sv_setiv(lasterr, (IV)hr);
     if (pszMsg != NULL) {
 	sv_setpv(lasterr, pszMsg);
 	SvIOK_on(lasterr);
@@ -522,11 +532,12 @@ SetLastOleError(HV *stash, HRESULT res=S_OK, char *pszMsg=NULL)
 }
 
 void
-ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
+ReportOleError(CPERLarg_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
+	       SV *svAdd=NULL)
 {
     dSP;
 
-    IV OleWarn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
+    IV OleWarn = QueryPkgVar(PERL_OBJECT_THIS_ stash, WARN_NAME, WARN_LEN, 0);
     SV *sv = sv_2mortal(newSVpv("",0));
     STRLEN len;
 
@@ -534,26 +545,27 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
     if (pExcep != NULL && (pExcep->bstrSource != NULL ||
 			   pExcep->bstrDescription != NULL )) {
 	char szSource[80] = "<Unknown Source>";
-	char szDescription[200] = "<No description provided>";
+	char szDesc[200] = "<No description provided>";
 
 	char *pszSource = szSource;
-	char *pszDescription = szDescription;
+	char *pszDesc = szDesc;
 
-	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN,
+			      cpDefault);
 
 	if (pExcep->bstrSource != NULL)
-	    pszSource = GetMultiByte(pExcep->bstrSource, szSource,
-				     sizeof(szSource), cp);
+	    pszSource = GetMultiByte(PERL_OBJECT_THIS_ pExcep->bstrSource,
+				     szSource, sizeof(szSource), cp);
 
 	if (pExcep->bstrDescription != NULL)
-	    pszDescription = GetMultiByte(pExcep->bstrDescription,
-			szDescription, sizeof(szDescription), cp);
-
+	    pszDesc = GetMultiByte(PERL_OBJECT_THIS_ pExcep->bstrDescription,
+				   szDesc, sizeof(szDesc), cp);
+	
 	sv_setpvf(sv, "OLE exception from \"%s\":\n\n%s\n\n",
-		  pszSource, pszDescription);
+		  pszSource, pszDesc);
 
-	ReleaseBuffer(pszSource, szSource);
-	ReleaseBuffer(pszDescription, szDescription);
+	ReleaseBuffer(PERL_OBJECT_THIS_ pszSource, szSource);
+	ReleaseBuffer(PERL_OBJECT_THIS_ pszDesc, szDesc);
 	/* SysFreeString accepts NULL too */
 	SysFreeString(pExcep->bstrSource);
 	SysFreeString(pExcep->bstrDescription);
@@ -561,14 +573,14 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
     }
 
     /* always include OLE error code */
-    sv_catpvf(sv, MY_VERSION " error 0x%08x", res);
+    sv_catpvf(sv, MY_VERSION " error 0x%08x", hr);
 
     /* try to append ': "error text"' from message catalog */
     char *pszMsgText;
     DWORD dwCount = FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER |
 				  FORMAT_MESSAGE_FROM_SYSTEM |
 				  FORMAT_MESSAGE_IGNORE_INSERTS,
-				  NULL, res, lcidSystemDefault,
+				  NULL, hr, lcidSystemDefault,
 				  (LPTSTR)&pszMsgText, 0, NULL);
     if (dwCount > 0) {
 	sv_catpv(sv, ": \"");
@@ -616,7 +628,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
 	}
     }
 
-    SetLastOleError(stash, res, SvPV(sv, len));
+    SetLastOleError(PERL_OBJECT_THIS_ stash, hr, SvPV(sv, len));
     
     if (OleWarn > 1 || (OleWarn == 1 && PL_dowarn)) {
 	PUSHMARK(sp) ;
@@ -628,17 +640,18 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
 }   /* ReportOleError */
 
 inline BOOL
-CheckOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
+CheckOleError(CPERLarg_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
+	      SV *svAdd=NULL)
 {
-    if (FAILED(res)) {
-	ReportOleError(stash, res, pExcep, svAdd);
+    if (FAILED(hr)) {
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr, pExcep, svAdd);
 	return TRUE;
     }
     return FALSE;
 }
 
 SV *
-CheckDestroyFunction(SV *sv, char *szMethod)
+CheckDestroyFunction(CPERLarg_ SV *sv, char *szMethod)
 {
     /* undef */
     if (!SvOK(sv))
@@ -654,7 +667,7 @@ CheckDestroyFunction(SV *sv, char *szMethod)
 }
 
 void
-AddToObjectChain(OBJECTHEADER *pHeader, long lMagic)
+AddToObjectChain(CPERLarg_ OBJECTHEADER *pHeader, long lMagic)
 {
     dPERINTERP;
 
@@ -674,7 +687,7 @@ AddToObjectChain(OBJECTHEADER *pHeader, long lMagic)
 }
 
 void
-RemoveFromObjectChain(OBJECTHEADER *pHeader)
+RemoveFromObjectChain(CPERLarg_ OBJECTHEADER *pHeader)
 {
     if (pHeader == NULL)
 	return;
@@ -699,7 +712,7 @@ RemoveFromObjectChain(OBJECTHEADER *pHeader)
 }
 
 SV *
-CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
+CreatePerlObject(CPERLarg_ HV *stash, IDispatch *pDispatch, SV *destroy)
 {
     /* returns a mortal reference to a new Perl OLE object */
 
@@ -735,7 +748,7 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
 	    pObj->destroy = newRV_inc(SvRV(destroy));
     }
 
-    AddToObjectChain(&pObj->header, WINOLE_MAGIC);
+    AddToObjectChain(PERL_OBJECT_THIS_ &pObj->header, WINOLE_MAGIC);
 
     DBG(("CreatePerlObject = |%lx| Class = %s Tie = %s\n", pObj,
 	 HvNAME(stash), szTie));
@@ -750,7 +763,7 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
 }   /* CreatePerlObject */
 
 void
-ReleasePerlObject(WINOLEOBJECT *pObj)
+ReleasePerlObject(CPERLarg_ WINOLEOBJECT *pObj)
 {
     dSP;
 
@@ -823,7 +836,7 @@ ReleasePerlObject(WINOLEOBJECT *pObj)
 }   /* ReleasePerlObject */
 
 WINOLEOBJECT *
-GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
+GetOleObject(CPERLarg_ SV *sv, BOOL bDESTROY=FALSE)
 {
     if (sv_isobject(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
@@ -850,7 +863,7 @@ GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
 }
 
 WINOLEENUMOBJECT *
-GetOleEnumObject(SV *sv, BOOL bDESTROY=FALSE)
+GetOleEnumObject(CPERLarg_ SV *sv, BOOL bDESTROY=FALSE)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLEENUM)) {
 	WINOLEENUMOBJECT *pEnumObj = (WINOLEENUMOBJECT*)SvIV(SvRV(sv));
@@ -865,7 +878,7 @@ GetOleEnumObject(SV *sv, BOOL bDESTROY=FALSE)
 }
 
 WINOLEVARIANTOBJECT *
-GetOleVariantObject(SV *sv)
+GetOleVariantObject(CPERLarg_ SV *sv)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLEVARIANT)) {
 	WINOLEVARIANTOBJECT *pVarObj = (WINOLEVARIANTOBJECT*)SvIV(SvRV(sv));
@@ -879,7 +892,7 @@ GetOleVariantObject(SV *sv)
 }
 
 BSTR
-AllocOleString(char* pStr, int length, UINT cp)
+AllocOleString(CPERLarg_ char* pStr, int length, UINT cp)
 {
     int count = MultiByteToWideChar(cp, 0, pStr, length, NULL, 0);
     BSTR bstr = SysAllocStringLen(NULL, count);
@@ -888,10 +901,10 @@ AllocOleString(char* pStr, int length, UINT cp)
 }
 
 HRESULT
-GetHashedDispID(WINOLEOBJECT *pObj, char *buffer, STRLEN len,
+GetHashedDispID(CPERLarg_ WINOLEOBJECT *pObj, char *buffer, STRLEN len,
 		DISPID &dispID, LCID lcid, UINT cp)
 {
-    HRESULT res;
+    HRESULT hr;
 
     if (len == 0 || *buffer == '\0') {
 	dispID = DISPID_VALUE;
@@ -909,50 +922,51 @@ GetHashedDispID(WINOLEOBJECT *pObj, char *buffer, STRLEN len,
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
 
-    pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
-    res = pObj->pDispatch->GetIDsOfNames(IID_NULL, &pBuffer, 1, lcid, &id);
-    ReleaseBuffer(pBuffer, Buffer);
+    pBuffer = GetWideChar(PERL_OBJECT_THIS_ buffer, Buffer, OLE_BUF_SIZ, cp);
+    hr = pObj->pDispatch->GetIDsOfNames(IID_NULL, &pBuffer, 1, lcid, &id);
+    ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
     /* Don't call CheckOleError! Caller might retry the "unnamed" method */
-    if (SUCCEEDED(res)) {
+    if (SUCCEEDED(hr)) {
 	hv_store(pObj->hashTable, buffer, len, newSViv(id), 0);
 	dispID = id;
     }
-    return res;
+    return hr;
 
 }   /* GetHashedDispID */
 
 void
-FetchTypeInfo(WINOLEOBJECT *pObj)
+FetchTypeInfo(CPERLarg_ WINOLEOBJECT *pObj)
 {
     unsigned int count;
     ITypeInfo *pTypeInfo;
-    LPTYPEATTR pTypeAttr;
+    TYPEATTR  *pTypeAttr;
     HV *stash = SvSTASH(pObj->self);
 
     if (pObj->pTypeInfo != NULL)
 	return;
 
-    HRESULT res = pObj->pDispatch->GetTypeInfoCount(&count);
-    if (res == E_NOTIMPL || count == 0) {
-	DBG(("GetTypeInfoCount returned %u (count=%d)", res, count));
+    HRESULT hr = pObj->pDispatch->GetTypeInfoCount(&count);
+    if (hr == E_NOTIMPL || count == 0) {
+	DBG(("GetTypeInfoCount returned %u (count=%d)", hr, count));
 	return;
     }
 
-    if (CheckOleError(stash, res)) {
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr)) {
 	warn(MY_VERSION ": FetchTypeInfo() GetTypeInfoCount failed");
 	DEBUGBREAK;
 	return;
     }
 
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-    res = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
-    if (CheckOleError(stash, res))
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
+    hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	return;
 
-    res = pTypeInfo->GetTypeAttr(&pTypeAttr);
-    if (FAILED(res)) {
+    hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+    if (FAILED(hr)) {
 	pTypeInfo->Release();
-	ReportOleError(stash, res);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	return;
     }
 
@@ -965,16 +979,16 @@ FetchTypeInfo(WINOLEOBJECT *pObj)
 	    HREFTYPE hreftype;
 	    ITypeInfo *pRefTypeInfo;
 
-	    res = pTypeInfo->GetRefTypeOfImplType(i, &hreftype);
-	    if (FAILED(res))
+	    hr = pTypeInfo->GetRefTypeOfImplType(i, &hreftype);
+	    if (FAILED(hr))
 		break;
 
-	    res = pTypeInfo->GetRefTypeInfo(hreftype, &pRefTypeInfo);
-	    if (FAILED(res))
+	    hr = pTypeInfo->GetRefTypeInfo(hreftype, &pRefTypeInfo);
+	    if (FAILED(hr))
 		break;
 
-	    res = pRefTypeInfo->GetTypeAttr(&pTypeAttr);
-	    if (FAILED(res)) {
+	    hr = pRefTypeInfo->GetTypeAttr(&pTypeAttr);
+	    if (FAILED(hr)) {
 		pRefTypeInfo->Release();
 		break;
 	    }
@@ -991,9 +1005,9 @@ FetchTypeInfo(WINOLEOBJECT *pObj)
 	}
     }
 
-    if (FAILED(res)) {
+    if (FAILED(hr)) {
 	pTypeInfo->Release();
-	ReportOleError(stash, res);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	return;
     }
 
@@ -1013,9 +1027,9 @@ FetchTypeInfo(WINOLEOBJECT *pObj)
 }   /* FetchTypeInfo */
 
 SV *
-NextPropertyName(WINOLEOBJECT *pObj)
+NextPropertyName(CPERLarg_ WINOLEOBJECT *pObj)
 {
-    HRESULT res;
+    HRESULT hr;
     unsigned int cName;
     BSTR bstr;
 
@@ -1023,59 +1037,67 @@ NextPropertyName(WINOLEOBJECT *pObj)
 	return &PL_sv_undef;
 
     HV *stash = SvSTASH(pObj->self);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     while (pObj->PropIndex < pObj->cFuncs+pObj->cVars) {
 	ULONG index = pObj->PropIndex++;
 	/* Try all the INVOKE_PROPERTYGET functions first */
 	if (index < pObj->cFuncs) {
-	    LPFUNCDESC pFuncDesc;
+	    FUNCDESC *pFuncDesc;
 
-	    res = pObj->pTypeInfo->GetFuncDesc(index, &pFuncDesc);
-	    if (CheckOleError(stash, res))
+	    hr = pObj->pTypeInfo->GetFuncDesc(index, &pFuncDesc);
+	    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 		continue;
 
 	    if (!(pFuncDesc->funckind & FUNC_DISPATCH) ||
 		!(pFuncDesc->invkind & INVOKE_PROPERTYGET) ||
 	        (pFuncDesc->wFuncFlags & (FUNCFLAG_FRESTRICTED |
 					  FUNCFLAG_FHIDDEN |
-					  FUNCFLAG_FNONBROWSABLE))) {
+					  FUNCFLAG_FNONBROWSABLE)))
+	    {
 		pObj->pTypeInfo->ReleaseFuncDesc(pFuncDesc);
 		continue;
 	    }
 
-	    res = pObj->pTypeInfo->GetNames(pFuncDesc->memid, &bstr, 1, &cName);
+	    hr = pObj->pTypeInfo->GetNames(pFuncDesc->memid, &bstr, 1, &cName);
 	    pObj->pTypeInfo->ReleaseFuncDesc(pFuncDesc);
-	    if (CheckOleError(stash, res) || cName == 0 || bstr == NULL)
+	    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr) ||
+		cName == 0 || bstr == NULL)
+	    {
 		continue;
+	    }
 
-	    SV *sv = sv_setwide(NULL, bstr, cp);
+	    SV *sv = sv_setwide(PERL_OBJECT_THIS_ NULL, bstr, cp);
 	    SysFreeString(bstr);
 	    return sv;
 	}
 	/* Now try the VAR_DISPATCH kind variables used by older OLE versions */
 	else {
-	    LPVARDESC pVarDesc;
+	    VARDESC *pVarDesc;
 
 	    index -= pObj->cFuncs;
-	    res = pObj->pTypeInfo->GetVarDesc(index, &pVarDesc);
-	    if (CheckOleError(stash, res))
+	    hr = pObj->pTypeInfo->GetVarDesc(index, &pVarDesc);
+	    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 		continue;
 
 	    if (!(pVarDesc->varkind & VAR_DISPATCH) ||
 		(pVarDesc->wVarFlags & (VARFLAG_FRESTRICTED |
 					VARFLAG_FHIDDEN |
-					VARFLAG_FNONBROWSABLE))) {
+					VARFLAG_FNONBROWSABLE)))
+	    {
 		pObj->pTypeInfo->ReleaseVarDesc(pVarDesc);
 		continue;
 	    }
 
-	    res = pObj->pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
+	    hr = pObj->pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
 	    pObj->pTypeInfo->ReleaseVarDesc(pVarDesc);
-	    if (CheckOleError(stash, res) || cName == 0 || bstr == NULL)
+	    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr) ||
+		cName == 0 || bstr == NULL)
+	    {
 		continue;
+	    }
 
-	    SV *sv = sv_setwide(NULL, bstr, cp);
+	    SV *sv = sv_setwide(PERL_OBJECT_THIS_ NULL, bstr, cp);
 	    SysFreeString(bstr);
 	    return sv;
 	}
@@ -1085,13 +1107,13 @@ NextPropertyName(WINOLEOBJECT *pObj)
 }   /* NextPropertyName */
 
 IEnumVARIANT *
-CreateEnumVARIANT(WINOLEOBJECT *pObj)
+CreateEnumVARIANT(CPERLarg_ WINOLEOBJECT *pObj)
 {
     unsigned int argErr;
     EXCEPINFO excepinfo;
     DISPPARAMS dispParams;
     VARIANT result;
-    HRESULT res;
+    HRESULT hr;
     IEnumVARIANT *pEnum = NULL;
 
     VariantInit(&result);
@@ -1101,52 +1123,53 @@ CreateEnumVARIANT(WINOLEOBJECT *pObj)
     dispParams.cArgs = 0;
 
     HV *stash = SvSTASH(pObj->self);
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
 
     Zero(&excepinfo, 1, EXCEPINFO);
-    res = pObj->pDispatch->Invoke(DISPID_NEWENUM, IID_NULL,
+    hr = pObj->pDispatch->Invoke(DISPID_NEWENUM, IID_NULL,
 			    lcid, DISPATCH_METHOD | DISPATCH_PROPERTYGET,
 			    &dispParams, &result, &excepinfo, &argErr);
-    if (SUCCEEDED(res)) {
+    if (SUCCEEDED(hr)) {
 	if (V_VT(&result) == VT_UNKNOWN)
-	    res = V_UNKNOWN(&result)->QueryInterface(IID_IEnumVARIANT,
-						     (void**)&pEnum);
+	    hr = V_UNKNOWN(&result)->QueryInterface(IID_IEnumVARIANT,
+						    (void**)&pEnum);
 	else if (V_VT(&result) == VT_DISPATCH)
-	    res = V_DISPATCH(&result)->QueryInterface(IID_IEnumVARIANT,
-						      (void**)&pEnum);
+	    hr = V_DISPATCH(&result)->QueryInterface(IID_IEnumVARIANT,
+						     (void**)&pEnum);
     }
     VariantClear(&result);
-    CheckOleError(stash, res, &excepinfo);
+    CheckOleError(PERL_OBJECT_THIS_ stash, hr, &excepinfo);
     return pEnum;
 
 }   /* CreateEnumVARIANT */
 
 SV *
-NextEnumElement(IEnumVARIANT *pEnum, HV *stash)
+NextEnumElement(CPERLarg_ IEnumVARIANT *pEnum, HV *stash)
 {
-    HRESULT res = S_OK;
+    HRESULT hr = S_OK;
     SV *sv = &PL_sv_undef;
     VARIANT variant;
 
     VariantInit(&variant);
     if (SUCCEEDED(pEnum->Next(1, &variant, NULL))) {
 	sv = newSVpv("",0);
-	res = SetSVFromVariant(&variant, sv, stash);
+	hr = SetSVFromVariant(PERL_OBJECT_THIS_ &variant, sv, stash);
     }
     VariantClear(&variant);
-    if (FAILED(res)) {
+    if (FAILED(hr)) {
         SvREFCNT_dec(sv);
 	sv = &PL_sv_undef;
-	ReportOleError(stash, res);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
     }
     return sv;
 
 }   /* NextEnumElement */
 
 HRESULT
-SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
+SetVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp)
 {
-    HRESULT res = S_OK;
+    HRESULT hr = S_OK;
     VariantInit(pVariant);
 
     /* XXX requirement to call mg_get() may change in Perl > 5.004 */
@@ -1156,26 +1179,28 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
     /* Objects */
     if (SvROK(sv)) {
 	if (sv_derived_from(sv, szWINOLE)) {
-	    WINOLEOBJECT *pObj = GetOleObject(sv);
+	    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ sv);
 	    if (pObj == NULL)
-		res = E_POINTER;
+		hr = E_POINTER;
 	    else {
 		pObj->pDispatch->AddRef();
 		V_VT(pVariant) = VT_DISPATCH;
 		V_DISPATCH(pVariant) = pObj->pDispatch;
 	    }
-	    return res;
+	    return hr;
 	}
 
 	if (sv_derived_from(sv, szWINOLEVARIANT)) {
-	    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(sv);
+	    WINOLEVARIANTOBJECT *pVarObj =
+		GetOleVariantObject(PERL_OBJECT_THIS_ sv);
+
 	    if (pVarObj == NULL)
-		res = E_POINTER;
+		hr = E_POINTER;
 	    else {
 		/* XXX Should we use VariantCopyInd? */
-		res = VariantCopy(pVariant, &pVarObj->variant);
+		hr = VariantCopy(pVariant, &pVarObj->variant);
 	    }
-	    return res;
+	    return hr;
 	}
 
 	sv = SvRV(sv);
@@ -1241,11 +1266,11 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 	/* Create and fill VARIANT array */
 	SAFEARRAY *psa = SafeArrayCreate(VT_VARIANT, dim, psab);
 	if (psa == NULL)
-	    res = E_OUTOFMEMORY;
+	    hr = E_OUTOFMEMORY;
 	else
-	    res = SafeArrayLock(psa);
+	    hr = SafeArrayLock(psa);
 
-	if (SUCCEEDED(res)) {
+	if (SUCCEEDED(hr)) {
 	    pav[0] = (AV*)sv;
 	    plen[0] = av_len(pav[0])+1;
 	    Zero(pix, dim, long);
@@ -1264,10 +1289,11 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 
 		    if (SvOK(*psv)) {
 			VARIANT *pElement;
-			res = SafeArrayPtrOfIndex(psa, pix, (void**)&pElement);
-			if (SUCCEEDED(res))
-			    res = SetVariantFromSV(*psv, pElement, cp);
-			if (FAILED(res))
+			hr = SafeArrayPtrOfIndex(psa, pix, (void**)&pElement);
+			if (SUCCEEDED(hr))
+			    hr = SetVariantFromSV(PERL_OBJECT_THIS_ *psv,
+						  pElement, cp);
+			if (FAILED(hr))
 			    break;
 		    }
 		}
@@ -1278,7 +1304,7 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 		    pix[index--] = 0;
 		}
 	    }
-	    res = SafeArrayUnlock(psa);
+	    hr = SafeArrayUnlock(psa);
 	}
 
 	Safefree(pav);
@@ -1286,14 +1312,14 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 	Safefree(plen);
 	Safefree(psab);
 
-	if (SUCCEEDED(res)) {
+	if (SUCCEEDED(hr)) {
 	    V_VT(pVariant) = VT_VARIANT | VT_ARRAY;
 	    V_ARRAY(pVariant) = psa;
 	}
 	else if (psa != NULL)
 	    SafeArrayDestroy(psa);
 
-	return res;
+	return hr;
     }
 
     /* Scalars */
@@ -1309,14 +1335,14 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 	STRLEN len;
 	char *ptr = SvPV(sv, len);
 	V_VT(pVariant) = VT_BSTR;
-	V_BSTR(pVariant) = AllocOleString(ptr, len, cp);
+	V_BSTR(pVariant) = AllocOleString(PERL_OBJECT_THIS_ ptr, len, cp);
     }
     else {
 	V_VT(pVariant) = VT_ERROR;
 	V_ERROR(pVariant) = DISP_E_PARAMNOTFOUND;
     }
 
-    return res;
+    return hr;
 
 }   /* SetVariantFromSV */
 
@@ -1335,9 +1361,9 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant, UINT cp)
 		    }
 
 HRESULT
-SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
+SetSVFromVariant(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash)
 {
-    HRESULT res = S_OK;
+    HRESULT hr = S_OK;
     sv_setsv(sv, &PL_sv_undef);
 
     if (V_ISARRAY(pVariant)) {
@@ -1360,13 +1386,13 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	    SafeArrayGetLBound(psa, 1, &lLower);
 	    SafeArrayGetUBound(psa, 1, &lUpper);
-	    res = SafeArrayAccessData(psa, (void**)&pStr);
-	    if (SUCCEEDED(res)) {
+	    hr = SafeArrayAccessData(psa, (void**)&pStr);
+	    if (SUCCEEDED(hr)) {
 		sv_setpvn(sv, pStr, lUpper-lLower+1);
 		SafeArrayUnaccessData(psa);
 	    }
 
-	    return res;
+	    return hr;
 	}
 
 	New(0, pArrayIndex, dim, long);
@@ -1382,16 +1408,16 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	Copy(pLowerBound, pArrayIndex, dim, long);
 
-	res = SafeArrayLock(psa);
-	if (SUCCEEDED(res)) {
+	hr = SafeArrayLock(psa);
+	if (SUCCEEDED(hr)) {
 	    while (index >= 0) {
-		res = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_BYREF(&variant));
-		if (FAILED(res))
+		hr = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_BYREF(&variant));
+		if (FAILED(hr))
 		    break;
 
 		SV *val = newSVpv("",0);
-		res = SetSVFromVariant(&variant, val, stash);
-		if (FAILED(res)) {
+		hr = SetSVFromVariant(PERL_OBJECT_THIS_ &variant, val, stash);
+		if (FAILED(hr)) {
 		    SvREFCNT_dec(val);
 		    break;
 		}
@@ -1410,15 +1436,15 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	    }
 
 	    /* preserve previous error code */
-	    HRESULT res2 = SafeArrayUnlock(psa);
-	    if (SUCCEEDED(res))
-		res = res2;
+	    HRESULT hr2 = SafeArrayUnlock(psa);
+	    if (SUCCEEDED(hr))
+		hr = hr2;
 	}
 
 	for (index = 1 ; index < dim ; ++index)
 	    SvREFCNT_dec((SV*)pav[index]);
 
-	if (SUCCEEDED(res))
+	if (SUCCEEDED(hr))
 	    sv_setsv(sv, sv_2mortal(newRV_noinc((SV*)*pav)));
 	else
 	    SvREFCNT_dec((SV*)*pav);
@@ -1428,7 +1454,7 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	Safefree(pUpperBound);
 	Safefree(pav);
 
-	return res;
+	return hr;
     }
 
     while (V_VT(pVariant) == (VT_VARIANT|VT_BYREF))
@@ -1464,12 +1490,13 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
     case VT_BSTR:
     {
-	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN,
+			      cpDefault);
 
 	if (V_ISBYREF(pVariant))
-	    sv_setwide(sv, *V_BSTRREF(pVariant), cp);
+	    sv_setwide(PERL_OBJECT_THIS_ sv, *V_BSTRREF(pVariant), cp);
 	else
-	    sv_setwide(sv, V_BSTR(pVariant), cp);
+	    sv_setwide(PERL_OBJECT_THIS_ sv, V_BSTR(pVariant), cp);
 
 	break;
     }
@@ -1496,7 +1523,8 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	if (pDispatch != NULL ) {
 	    pDispatch->AddRef();
-	    sv_setsv(sv, CreatePerlObject(stash, pDispatch, NULL));
+	    sv_setsv(sv, CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch,
+					  NULL));
 	}
 	break;
     }
@@ -1512,10 +1540,10 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	    punk = V_UNKNOWN(pVariant);
 
 	if (punk != NULL &&
-	    SUCCEEDED(punk->QueryInterface(IID_IDispatch,
-					   (void**)&pDispatch)))
+	    SUCCEEDED(punk->QueryInterface(IID_IDispatch, (void**)&pDispatch)))
 	{
-	    sv_setsv(sv, CreatePerlObject(stash, pDispatch, NULL));
+	    sv_setsv(sv, CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch,
+					  NULL));
 	}
 	break;
     }
@@ -1524,20 +1552,22 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
     case VT_CY:
     default:
     {
-	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+				lcidDefault);
+	UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN,
+			      cpDefault);
 	VARIANT variant;
 
 	VariantInit(&variant);
-	res = VariantChangeTypeEx(&variant, pVariant, lcid, 0, VT_BSTR);
-	if (SUCCEEDED(res) && V_VT(&variant) == VT_BSTR)
-	    sv_setwide(sv, V_BSTR(&variant), cp);
+	hr = VariantChangeTypeEx(&variant, pVariant, lcid, 0, VT_BSTR);
+	if (SUCCEEDED(hr) && V_VT(&variant) == VT_BSTR)
+	    sv_setwide(PERL_OBJECT_THIS_ sv, V_BSTR(&variant), cp);
 	VariantClear(&variant);
 	break;
     }
     }
 
-    return res;
+    return hr;
 
 }   /* SetSVFromVariant */
 
@@ -1555,7 +1585,7 @@ SpinMessageLoop(void)
 }   /* SpinMessageLoop */
 
 void
-Initialize(DWORD dwCoInit=COINIT_MULTITHREADED)
+Initialize(CPERLarg_ DWORD dwCoInit=COINIT_MULTITHREADED)
 {
     dPERINTERP;
 
@@ -1585,7 +1615,7 @@ Initialize(DWORD dwCoInit=COINIT_MULTITHREADED)
 }   /* Initialize */
 
 void
-Uninitialize(PERINTERP *pInterp, int magic=0)
+Uninitialize(CPERLarg_ PERINTERP *pInterp, int magic=0)
 {
     /* This function is called during Perl interpreter cleanup after all objects
      * have already been destroyed. Do NOT access Perl data structures! */
@@ -1599,7 +1629,7 @@ Uninitialize(PERINTERP *pInterp, int magic=0)
 	    switch (g_pObj->lMagic)
 	    {
 	    case WINOLE_MAGIC:
-		ReleasePerlObject((WINOLEOBJECT*)g_pObj);
+		ReleasePerlObject(PERL_OBJECT_THIS_ (WINOLEOBJECT*)g_pObj);
 		break;
 
 	    case WINOLEENUM_MAGIC:
@@ -1654,13 +1684,13 @@ Uninitialize(PERINTERP *pInterp, int magic=0)
 static void
 AtExit(CPERLarg_ void *pVoid)
 {
-    Uninitialize((PERINTERP*)pVoid, WINOLE_MAGIC);
+    Uninitialize(PERL_OBJECT_THIS_ (PERINTERP*)pVoid, WINOLE_MAGIC);
     DBG(("AtExit done\n"));
 
 }   /* AtExit */
 
 void
-Bootstrap(void)
+Bootstrap(CPERLarg)
 {
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
     PERINTERP *pInterp;
@@ -1703,7 +1733,7 @@ Bootstrap(void)
 }   /* Bootstrap */
 
 BOOL
-CallObjectMethod(SV **mark, I32 ax, I32 items, char *pszMethod)
+CallObjectMethod(CPERLarg_ SV **mark, I32 ax, I32 items, char *pszMethod)
 {
     /* If the 1st arg on the stack is a Win32::OLE object then the method
      * is called as an object method through Win32::OLE::Dispatch (like
@@ -1746,7 +1776,7 @@ CallObjectMethod(SV **mark, I32 ax, I32 items, char *pszMethod)
 }   /* CallObjectMethod */
 
 HV *
-GetStash(SV *sv)
+GetStash(CPERLarg_ SV *sv)
 {
     if (sv_isobject(sv))
 	return SvSTASH(SvRV(sv));
@@ -1768,7 +1798,7 @@ MODULE = Win32::OLE		PACKAGE = Win32::OLE
 PROTOTYPES: DISABLE
 
 BOOT:
-    Bootstrap();
+    Bootstrap(PERL_OBJECT_THIS);
 
 void
 Initialize(...)
@@ -1779,7 +1809,7 @@ PPCODE:
 {
     char *paszMethod[] = {"Initialize", "Uninitialize", "SpinMessageLoop"};
 
-    if (CallObjectMethod(mark, ax, items, paszMethod[ix]))
+    if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, paszMethod[ix]))
 	return;
 
     DBG(("Win32::OLE->%s()\n", paszMethod[ix]));
@@ -1793,7 +1823,7 @@ PPCODE:
 	if (items > 1 && SvOK(ST(1)))
 	    dwCoInit = SvIV(ST(1));
 
-	Initialize(dwCoInit);
+	Initialize(PERL_OBJECT_THIS_ dwCoInit);
 	break;
     }
     case 1:
@@ -1804,7 +1834,7 @@ PPCODE:
 	if (items > 1 && SvOK(ST(1)))
 	    magic = SvIV(ST(1));
 
-	Uninitialize(INTERP, magic);
+	Uninitialize(PERL_OBJECT_THIS_ INTERP, magic);
 	break;
     }
     case 2:
@@ -1823,10 +1853,10 @@ PPCODE:
     IDispatch *pDispatch = NULL;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
-    HRESULT res;
+    HRESULT hr;
     STRLEN len;
 
-    if (CallObjectMethod(mark, ax, items, "new"))
+    if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "new"))
 	return;
 
     if (items < 2 || items > 3) {
@@ -1839,32 +1869,33 @@ PPCODE:
     HV *stash = gv_stashsv(self, TRUE);
     SV *progid = ST(1);
     SV *destroy = NULL;
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
-    Initialize();
-    SetLastOleError(stash);
+    Initialize(PERL_OBJECT_THIS);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     if (items == 3)
-	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
+	destroy = CheckDestroyFunction(PERL_OBJECT_THIS_ ST(2),
+				       "Win32::OLE::new");
 
     ST(0) = &PL_sv_undef;
 
     /* normal case: no DCOM */
     if (!SvROK(progid) || SvTYPE(SvRV(progid)) != SVt_PVAV) {
-	pBuffer = GetWideChar(SvPV(progid, len), Buffer, OLE_BUF_SIZ, cp);
+	pBuffer = GetWideChar(PERL_OBJECT_THIS_ SvPV(progid, len), Buffer,
+			      OLE_BUF_SIZ, cp);
 	if (isalpha(pBuffer[0]))
-	    res = CLSIDFromProgID(pBuffer, &clsid);
+	    hr = CLSIDFromProgID(pBuffer, &clsid);
 	else
-	    res = CLSIDFromString(pBuffer, &clsid);
-	ReleaseBuffer(pBuffer, Buffer);
- DBG(("CLSID.. returned res=0x%08x\n", res));
-	if (SUCCEEDED(res)) {
-	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
-				   IID_IDispatch, (void**)&pDispatch);
- DBG(("CoCreateInstance.. returned res=0x%08x\n", res));
+	    hr = CLSIDFromString(pBuffer, &clsid);
+	ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
+	if (SUCCEEDED(hr)) {
+	    hr = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
+				  IID_IDispatch, (void**)&pDispatch);
 	}
-	if (!CheckOleError(stash, res)) {
-	    ST(0) = CreatePerlObject(stash, pDispatch, destroy);
+	if (!CheckOleError(PERL_OBJECT_THIS_ stash, hr)) {
+	    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch,
+				     destroy);
 	    DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
 	}
 	XSRETURN(1);
@@ -1873,8 +1904,8 @@ PPCODE:
     /* DCOM might not exist on Win95 (and does not on NT 3.5) */
     dPERINTERP;
     if (g_pfnCoCreateInstanceEx == NULL) {
-	res = HRESULT_FROM_WIN32(ERROR_SERVICE_DOES_NOT_EXIST);
-	ReportOleError(stash, res);
+	hr = HRESULT_FROM_WIN32(ERROR_SERVICE_DOES_NOT_EXIST);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	XSRETURN(1);
     }
 
@@ -1891,23 +1922,24 @@ PPCODE:
     char *pszHost = NULL;
     if (SvPOK(host)) {
 	pszHost = SvPV(host, len);
-	if (IsLocalMachine(pszHost))
+	if (IsLocalMachine(PERL_OBJECT_THIS_ pszHost))
 	    pszHost = NULL;
     }
 
     /* determine CLSID */
     char *pszProgID = SvPV(progid, len);
-    pBuffer = GetWideChar(pszProgID, Buffer, OLE_BUF_SIZ, cp);
+    pBuffer = GetWideChar(PERL_OBJECT_THIS_ pszProgID, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0])) {
-	res = CLSIDFromProgID(pBuffer, &clsid);
-	if (FAILED(res) && pszHost != NULL)
-	    res = CLSIDFromRemoteRegistry(pszHost, pszProgID, &clsid);
+	hr = CLSIDFromProgID(pBuffer, &clsid);
+	if (FAILED(hr) && pszHost != NULL)
+	    hr = CLSIDFromRemoteRegistry(PERL_OBJECT_THIS_ pszHost, pszProgID,
+					 &clsid);
     }
     else
-        res = CLSIDFromString(pBuffer, &clsid);
-    ReleaseBuffer(pBuffer, Buffer);
-    if (FAILED(res)) {
-	ReportOleError(stash, res);
+        hr = CLSIDFromString(pBuffer, &clsid);
+    ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
+    if (FAILED(hr)) {
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	XSRETURN(1);
     }
 
@@ -1921,18 +1953,19 @@ PPCODE:
     if (pszHost == NULL)
 	clsctx = CLSCTX_SERVER;
     else
-	ServerInfo.pwszName = GetWideChar(pszHost, ServerName, OLE_BUF_SIZ, cp);
+	ServerInfo.pwszName = GetWideChar(PERL_OBJECT_THIS_ pszHost, ServerName,
+					  OLE_BUF_SIZ, cp);
 
     Zero(&multi_qi, 1, MULTI_QI);
     multi_qi.pIID = &IID_IDispatch;
 
     /* create instance on remote server */
-    res = g_pfnCoCreateInstanceEx(clsid, NULL, clsctx, &ServerInfo,
+    hr = g_pfnCoCreateInstanceEx(clsid, NULL, clsctx, &ServerInfo,
 				  1, &multi_qi);
-    ReleaseBuffer(ServerInfo.pwszName, ServerName);
-    if (!CheckOleError(stash, res)) {
+    ReleaseBuffer(PERL_OBJECT_THIS_ ServerInfo.pwszName, ServerName);
+    if (!CheckOleError(PERL_OBJECT_THIS_ stash, hr)) {
 	pDispatch = (IDispatch*)multi_qi.pItf;
-	ST(0) = CreatePerlObject(stash, pDispatch, destroy);
+	ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, destroy);
 	DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
     }
     XSRETURN(1);
@@ -1943,7 +1976,8 @@ DESTROY(self)
     SV *self
 PPCODE:
 {
-    ReleasePerlObject(GetOleObject(self, TRUE));
+    ReleasePerlObject(PERL_OBJECT_THIS_ 
+		      GetOleObject(PERL_OBJECT_THIS_ self, TRUE));
     XSRETURN_EMPTY;
 }
 
@@ -1970,7 +2004,7 @@ PPCODE:
     HE **rghe = NULL; /* named argument names */
 
     SV *err = NULL; /* error details */
-    HRESULT res = S_OK;
+    HRESULT hr = S_OK;
 
     ST(0) = &PL_sv_no;
     Zero(&excepinfo, 1, EXCEPINFO);
@@ -1982,16 +2016,17 @@ PPCODE:
 	XSRETURN(1);
     }
 
-    pObj = GetOleObject(self);
+    pObj = GetOleObject(PERL_OBJECT_THIS_ self);
     if (pObj == NULL) {
 	XSRETURN(1);
     }
 
     HV *stash = SvSTASH(pObj->self);
-    SetLastOleError(stash);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     /* allow [wFlags, 'Method'] instead of 'Method' */
     if (SvROK(method) && (sv = SvRV(method)) &&	SvTYPE(sv) == SVt_PVAV &&
@@ -2004,11 +2039,13 @@ PPCODE:
     if (SvPOK(method)) {
 	buffer = SvPV(method, length);
 	if (length > 0) {
-	    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
-	    if (FAILED(res)) {
+	    hr = GetHashedDispID(PERL_OBJECT_THIS_ pObj, buffer, length, dispID,
+				 lcid, cp);
+	    if (FAILED(hr)) {
 		if (PL_hints & HINT_STRICT_SUBS) {
 		    err = newSVpvf(" in GetIDsOfNames of \"%s\"", buffer);
-		    ReportOleError(stash, res, NULL, sv_2mortal(err));
+		    ReportOleError(PERL_OBJECT_THIS_ stash, hr, NULL,
+				   sv_2mortal(err));
 		}
 		XSRETURN_UNDEF;
 	    }
@@ -2050,23 +2087,25 @@ PPCODE:
 	New(0, rgszNames, 1+dispParams.cNamedArgs, OLECHAR *);
 	New(0, rgdispids, 1+dispParams.cNamedArgs, DISPID);
 
-	rgszNames[0] = AllocOleString(buffer, length, cp);
+	rgszNames[0] = AllocOleString(PERL_OBJECT_THIS_ buffer, length, cp);
 	hv_iterinit(hv);
 	for (index = 0; index < dispParams.cNamedArgs; ++index) {
 	    rghe[index] = hv_iternext(hv);
 	    char *pszName = hv_iterkey(rghe[index], &len);
-	    rgszNames[1+index] = AllocOleString(pszName, len, cp);
+	    rgszNames[1+index] = AllocOleString(PERL_OBJECT_THIS_ pszName,
+						len, cp);
 	}
 
-	res = pObj->pDispatch->GetIDsOfNames(IID_NULL, rgszNames,
+	hr = pObj->pDispatch->GetIDsOfNames(IID_NULL, rgszNames,
 			      1+dispParams.cNamedArgs, lcid, rgdispids);
 
-	if (SUCCEEDED(res)) {
+	if (SUCCEEDED(hr)) {
 	    for (index = 0; index < dispParams.cNamedArgs; ++index) {
 		dispParams.rgdispidNamedArgs[index] = rgdispids[index+1];
-		res = SetVariantFromSV(hv_iterval(hv, rghe[index]),
-				       &dispParams.rgvarg[index], cp);
-		if (FAILED(res))
+		hr = SetVariantFromSV(PERL_OBJECT_THIS_ 
+				      hv_iterval(hv, rghe[index]),
+				      &dispParams.rgvarg[index], cp);
+		if (FAILED(hr))
 		    break;
 	    }
 	}
@@ -2093,7 +2132,7 @@ PPCODE:
 	Safefree(rgszNames);
 	Safefree(rgdispids);
 
-	if (FAILED(res))
+	if (FAILED(hr))
 	    goto Cleanup;
 
 	--items;
@@ -2107,9 +2146,10 @@ PPCODE:
 	}
 
 	for(index = dispParams.cNamedArgs; index < dispParams.cArgs; ++index) {
-	    res = SetVariantFromSV(ST(items-1-(index-dispParams.cNamedArgs)),
-				   &dispParams.rgvarg[index], cp);
-	    if (FAILED(res))
+	    hr = SetVariantFromSV(PERL_OBJECT_THIS_ 
+				  ST(items-1-(index-dispParams.cNamedArgs)),
+				  &dispParams.rgvarg[index], cp);
+	    if (FAILED(hr))
 		goto Cleanup;
 	}
     }
@@ -2120,25 +2160,26 @@ PPCODE:
 	dispParams.cNamedArgs = 1;
     }
 
-    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
+    hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				  &dispParams, &result, &excepinfo, &argErr);
 
-    if (FAILED(res)) {
+    if (FAILED(hr)) {
 	/* mega kludge. if a method in WORD is called and we ask
 	 * for a result when one is not returned then
 	 * hResult == DISP_E_EXCEPTION. this only happens on
 	 * functions whose DISPID > 0x8000 */
 
-	if (res == DISP_E_EXCEPTION && dispID > 0x8000) {
+	if (hr == DISP_E_EXCEPTION && dispID > 0x8000) {
 	    Zero(&excepinfo, 1, EXCEPINFO);
-	    res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
+	    hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				  &dispParams, NULL, &excepinfo, &argErr);
 	}
     }
 
-    if (SUCCEEDED(res)) {
+    if (SUCCEEDED(hr)) {
 	if (sv_isobject(retval) && sv_derived_from(retval, szWINOLEVARIANT)) {
-	    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(retval);
+	    WINOLEVARIANTOBJECT *pVarObj =
+		GetOleVariantObject(PERL_OBJECT_THIS_ retval);
 
 	    if (pVarObj != NULL) {
 		VariantClear(&pVarObj->byref);
@@ -2149,14 +2190,14 @@ PPCODE:
 	    }
 	}
 	else {
-	    res = SetSVFromVariant(&result, retval, stash);
+	    hr = SetSVFromVariant(PERL_OBJECT_THIS_ &result, retval, stash);
 	    ST(0) = &PL_sv_yes;
 	}
     }
     else {
 	/* use more specific error code from exception when available */
-	if (res == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
-	    res = excepinfo.scode;
+	if (hr == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
+	    hr = excepinfo.scode;
 
 	char *pszDelim = "";
 	err = sv_newmortal();
@@ -2179,9 +2220,10 @@ PPCODE:
 
 	sv_catpvf(err, " \"%s\"", buffer);
 
-	if (res == DISP_E_TYPEMISMATCH || res == DISP_E_PARAMNOTFOUND) {
+	if (hr == DISP_E_TYPEMISMATCH || hr == DISP_E_PARAMNOTFOUND) {
 	    if (argErr < dispParams.cNamedArgs)
-		sv_catpvf(err, " argument \"%s\"", hv_iterkey(rghe[argErr], &len));
+		sv_catpvf(err, " argument \"%s\"",
+			  hv_iterkey(rghe[argErr], &len));
 	    else
 		sv_catpvf(err, " argument %d", 1 + dispParams.cArgs - argErr);
 	}
@@ -2198,7 +2240,7 @@ PPCODE:
     if (dispParams.rgdispidNamedArgs != &dispIDParam)
 	Safefree(dispParams.rgdispidNamedArgs);
 
-    CheckOleError(stash, res, &excepinfo, err);
+    CheckOleError(PERL_OBJECT_THIS_ stash, hr, &excepinfo, err);
 
     XSRETURN(1);
 }
@@ -2212,11 +2254,11 @@ PPCODE:
     OLECHAR *pBuffer;
     unsigned int length;
     char *buffer;
-    HRESULT res;
+    HRESULT hr;
     IUnknown *pUnknown;
     IDispatch *pDispatch;
 
-    if (CallObjectMethod(mark, ax, items, "GetActiveObject"))
+    if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "GetActiveObject"))
 	return;
 
     if (items != 2) {
@@ -2228,7 +2270,7 @@ PPCODE:
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
     SV *progid = ST(1);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     if (!SvPOK(self)) {
 	warn("Win32::OLE->GetActiveObject: Must be called as a class method");
@@ -2236,30 +2278,30 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
-    Initialize();
-    SetLastOleError(stash);
+    Initialize(PERL_OBJECT_THIS);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     buffer = SvPV(progid, length);
-    pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
+    pBuffer = GetWideChar(PERL_OBJECT_THIS_ buffer, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0]))
-        res = CLSIDFromProgID(pBuffer, &clsid);
+        hr = CLSIDFromProgID(pBuffer, &clsid);
     else
-        res = CLSIDFromString(pBuffer, &clsid);
-    ReleaseBuffer(pBuffer, Buffer);
-    if (CheckOleError(stash, res))
+        hr = CLSIDFromString(pBuffer, &clsid);
+    ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    res = GetActiveObject(clsid, 0, &pUnknown);
+    hr = GetActiveObject(clsid, 0, &pUnknown);
     /* Don't call CheckOleError! Return "undef" for "Server not running" */
-    if (FAILED(res))
+    if (FAILED(hr))
 	XSRETURN_UNDEF;
 
-    res = pUnknown->QueryInterface(IID_IDispatch, (void**)&pDispatch);
+    hr = pUnknown->QueryInterface(IID_IDispatch, (void**)&pDispatch);
     pUnknown->Release();
-    if (CheckOleError(stash, res))
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    ST(0) = CreatePerlObject(stash, pDispatch, NULL);
+    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, NULL);
     DBG(("Win32::OLE::GetActiveObject |%lx| |%lx|\n", ST(0), pDispatch));
     XSRETURN(1);
 }
@@ -2275,10 +2317,10 @@ PPCODE:
     OLECHAR *pBuffer;
     char *buffer;
     ULONG ulEaten;
-    HRESULT res;
+    HRESULT hr;
     STRLEN len;
 
-    if (CallObjectMethod(mark, ax, items, "GetObject"))
+    if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "GetObject"))
 	return;
 
     if (items != 2) {
@@ -2290,7 +2332,7 @@ PPCODE:
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
     SV *pathname = ST(1);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     if (!SvPOK(self)) {
 	warn("Win32::OLE->GetObject: Must be called as a class method");
@@ -2298,33 +2340,33 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
-    Initialize();
-    SetLastOleError(stash);
+    Initialize(PERL_OBJECT_THIS);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
-    res = CreateBindCtx(0, &pBindCtx);
-    if (CheckOleError(stash, res))
+    hr = CreateBindCtx(0, &pBindCtx);
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
     buffer = SvPV(pathname, len);
-    pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
-    res = MkParseDisplayName(pBindCtx, pBuffer, &ulEaten, &pMoniker);
-    ReleaseBuffer(pBuffer, Buffer);
-    if (FAILED(res)) {
+    pBuffer = GetWideChar(PERL_OBJECT_THIS_ buffer, Buffer, OLE_BUF_SIZ, cp);
+    hr = MkParseDisplayName(pBindCtx, pBuffer, &ulEaten, &pMoniker);
+    ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
+    if (FAILED(hr)) {
 	pBindCtx->Release();
 	SV *sv = sv_newmortal();
 	sv_setpvf(sv, "after character %lu in \"%s\"", ulEaten, buffer);
-	ReportOleError(stash, res, NULL, sv);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr, NULL, sv);
 	XSRETURN_UNDEF;
     }
 
-    res = pMoniker->BindToObject(pBindCtx, NULL, IID_IDispatch,
+    hr = pMoniker->BindToObject(pBindCtx, NULL, IID_IDispatch,
 				 (void**)&pDispatch);
     pBindCtx->Release();
     pMoniker->Release();
-    if (CheckOleError(stash, res))
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    ST(0) = CreatePerlObject(stash, pDispatch, NULL);
+    ST(0) = CreatePerlObject(PERL_OBJECT_THIS_ stash, pDispatch, NULL);
     XSRETURN(1);
 }
 
@@ -2332,7 +2374,7 @@ void
 QueryObjectType(...)
 PPCODE:
 {
-    if (CallObjectMethod(mark, ax, items, "QueryObjectType"))
+    if (CallObjectMethod(PERL_OBJECT_THIS_ mark, ax, items, "QueryObjectType"))
 	return;
 
     if (items != 2) {
@@ -2346,7 +2388,7 @@ PPCODE:
     if (!sv_isobject(object) || !sv_derived_from(object, szWINOLE))
 	XSRETURN_UNDEF;
 
-    WINOLEOBJECT *pObj = GetOleObject(object);
+    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ object);
     if (pObj == NULL)
 	XSRETURN_UNDEF;
 
@@ -2355,46 +2397,47 @@ PPCODE:
     unsigned int count;
     BSTR bstr;
 
-    HRESULT res = pObj->pDispatch->GetTypeInfoCount(&count);
-    if (FAILED(res) || count == 0)
+    HRESULT hr = pObj->pDispatch->GetTypeInfoCount(&count);
+    if (FAILED(hr) || count == 0)
 	XSRETURN_UNDEF;
 
     HV *stash = gv_stashsv(ST(0), TRUE);
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
-    SetLastOleError(stash);
-    res = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
-    if (CheckOleError(stash, res))
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
+    hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
     /* Return ('TypeLib Name', 'Class Name') in array context */
     if (GIMME_V == G_ARRAY) {
-	res = pTypeInfo->GetContainingTypeLib(&pTypeLib, &count);
-	if (FAILED(res)) {
+	hr = pTypeInfo->GetContainingTypeLib(&pTypeLib, &count);
+	if (FAILED(hr)) {
 	    pTypeInfo->Release();
-	    ReportOleError(stash, res);
+	    ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	    XSRETURN_UNDEF;
 	}
 
-	res = pTypeLib->GetDocumentation(-1, &bstr, NULL, NULL, NULL);
+	hr = pTypeLib->GetDocumentation(-1, &bstr, NULL, NULL, NULL);
 	pTypeLib->Release();
-	if (FAILED(res)) {
+	if (FAILED(hr)) {
 	    pTypeInfo->Release();
-	    ReportOleError(stash, res);
+	    ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	    XSRETURN_UNDEF;
 	}
 
-	PUSHs(sv_2mortal(sv_setwide(NULL, bstr, cp)));
+	PUSHs(sv_2mortal(sv_setwide(PERL_OBJECT_THIS_ NULL, bstr, cp)));
 	SysFreeString(bstr);
     }
 
-    res = pTypeInfo->GetDocumentation(MEMBERID_NIL, &bstr, NULL, NULL, NULL);
+    hr = pTypeInfo->GetDocumentation(MEMBERID_NIL, &bstr, NULL, NULL, NULL);
     pTypeInfo->Release();
-    if (CheckOleError(stash, res))
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	XSRETURN_UNDEF;
 
-    PUSHs(sv_2mortal(sv_setwide(NULL, bstr, cp)));
+    PUSHs(sv_2mortal(sv_setwide(PERL_OBJECT_THIS_ NULL, bstr, cp)));
     SysFreeString(bstr);
 }
 
@@ -2407,10 +2450,10 @@ DESTROY(self)
     SV *self
 PPCODE:
 {
-    WINOLEOBJECT *pObj = GetOleObject(self, TRUE);
+    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ self, TRUE);
     if (pObj != NULL) {
 	DBG(("Win32::OLE::Tie::DESTROY |%lx| |%lx|\n", pObj, pObj->pDispatch));
-	RemoveFromObjectChain((OBJECTHEADER *)pObj);
+	RemoveFromObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER *)pObj);
 	Safefree(pObj);
     }
     XSRETURN_EMPTY;
@@ -2431,7 +2474,7 @@ PPCODE:
     VARIANT result;
     VARIANTARG propName;
     DISPID dispID = DISPID_VALUE;
-    HRESULT res;
+    HRESULT hr;
 
     buffer = SvPV(key, length);
     if (strEQ(buffer, PERL_OLE_ID)) {
@@ -2439,59 +2482,62 @@ PPCODE:
 	XSRETURN(1);
     }
 
-    WINOLEOBJECT *pObj = GetOleObject(self);
+    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ self);
     if (pObj == NULL)
 	XSRETURN_EMPTY;
 
     HV *stash = SvSTASH(pObj->self);
-    SetLastOleError(stash);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     ST(0) = &PL_sv_undef;
     VariantInit(&result);
     VariantInit(&propName);
 
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     dispParams.cArgs = 0;
     dispParams.rgvarg = NULL;
     dispParams.cNamedArgs = 0;
     dispParams.rgdispidNamedArgs = NULL;
 
-    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
-    if (FAILED(res)) {
+    hr = GetHashedDispID(PERL_OBJECT_THIS_ pObj, buffer, length, dispID,
+			 lcid, cp);
+    if (FAILED(hr)) {
 	if (!SvTRUE(def)) {
 	    SV *err = newSVpvf(" in GetIDsOfNames \"%s\"", buffer);
-	    ReportOleError(stash, res, NULL, sv_2mortal(err));
+	    ReportOleError(PERL_OBJECT_THIS_ stash, hr, NULL, sv_2mortal(err));
 	    XSRETURN(1);
 	}
 
 	/* default method call: $self->{Key} ---> $self->Item('Key') */
 	V_VT(&propName) = VT_BSTR;
-	V_BSTR(&propName) = AllocOleString(buffer, length, cp);
+	V_BSTR(&propName) = AllocOleString(PERL_OBJECT_THIS_ buffer, length,
+					   cp);
 	dispParams.cArgs = 1;
 	dispParams.rgvarg = &propName;
     }
 
     Zero(&excepinfo, 1, EXCEPINFO);
 
-    res = pObj->pDispatch->Invoke(dispID, IID_NULL,
+    hr = pObj->pDispatch->Invoke(dispID, IID_NULL,
 		    lcid, DISPATCH_METHOD | DISPATCH_PROPERTYGET,
 		    &dispParams, &result, &excepinfo, &argErr);
 
     VariantClear(&propName);
 
-    if (FAILED(res)) {
+    if (FAILED(hr)) {
 	SV *sv = sv_newmortal();
 	sv_setpvf(sv, "in METHOD/PROPERTYGET \"%s\"", buffer);
 	VariantClear(&result);
-	ReportOleError(stash, res, &excepinfo, sv);
+	ReportOleError(PERL_OBJECT_THIS_ stash, hr, &excepinfo, sv);
     }
     else {
 	ST(0) = sv_newmortal();
-	res = SetSVFromVariant(&result, ST(0), stash);
+	hr = SetSVFromVariant(PERL_OBJECT_THIS_ &result, ST(0), stash);
 	VariantClear(&result);
-	CheckOleError(stash, res);
+	CheckOleError(PERL_OBJECT_THIS_ stash, hr);
     }
 
     XSRETURN(1);
@@ -2508,7 +2554,7 @@ PPCODE:
     unsigned int length, argErr;
     char *buffer;
     int index;
-    HRESULT res;
+    HRESULT hr;
     EXCEPINFO excepinfo;
     DISPID dispID = DISPID_VALUE;
     DISPID dispIDParam = DISPID_PROPERTYPUT;
@@ -2516,15 +2562,16 @@ PPCODE:
     VARIANTARG propertyValue[2];
     SV *err = NULL;
 
-    WINOLEOBJECT *pObj = GetOleObject(self);
+    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ self);
     if (pObj == NULL)
 	XSRETURN_EMPTY;
 
     HV *stash = SvSTASH(pObj->self);
-    SetLastOleError(stash);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
-    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			    lcidDefault);
+    UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
     dispParams.rgdispidNamedArgs = &dispIDParam;
     dispParams.rgvarg = propertyValue;
@@ -2536,31 +2583,33 @@ PPCODE:
     Zero(&excepinfo, 1, EXCEPINFO);
 
     buffer = SvPV(key, length);
-    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
-    if (FAILED(res)) {
+    hr = GetHashedDispID(PERL_OBJECT_THIS_ pObj, buffer, length, dispID, lcid,
+			 cp);
+    if (FAILED(hr)) {
 	if (!SvTRUE(def)) {
 	    SV *err = newSVpvf(" in GetIDsOfNames \"%s\"", buffer);
-	    ReportOleError(stash, res, NULL, sv_2mortal(err));
+	    ReportOleError(PERL_OBJECT_THIS_ stash, hr, NULL, sv_2mortal(err));
 	    XSRETURN_EMPTY;
 	}
 
 	dispParams.cArgs = 2;
 	V_VT(&propertyValue[1]) = VT_BSTR;
-	V_BSTR(&propertyValue[1]) = AllocOleString(buffer, length, cp);
+	V_BSTR(&propertyValue[1]) = AllocOleString(PERL_OBJECT_THIS_ buffer,
+						   length, cp);
     }
 
-    res = SetVariantFromSV(value, &propertyValue[0], cp);
-    if (SUCCEEDED(res)) {
+    hr = SetVariantFromSV(PERL_OBJECT_THIS_ value, &propertyValue[0], cp);
+    if (SUCCEEDED(hr)) {
 	USHORT wFlags = DISPATCH_PROPERTYPUT;
 
-	/* object are passed by reference */
+	/* objects are passed by reference */
 	VARTYPE vt = V_VT(&propertyValue[0]);
 	if (vt == VT_DISPATCH || vt == VT_UNKNOWN)
 	    wFlags = DISPATCH_PROPERTYPUTREF;
 
-	res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
+	hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				      &dispParams, NULL, &excepinfo, &argErr);
-	if (FAILED(res)) {
+	if (FAILED(hr)) {
 	    err = sv_newmortal();
 	    sv_setpvf(err, "in PROPERTYPUT%s \"%s\"",
 		      (wFlags == DISPATCH_PROPERTYPUTREF ? "REF" : ""), buffer);
@@ -2570,7 +2619,7 @@ PPCODE:
     for(index = 0; index < dispParams.cArgs; ++index)
 	VariantClear(&propertyValue[index]);
 
-    if (CheckOleError(stash, res, &excepinfo, err))
+    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr, &excepinfo, err))
 	XSRETURN_EMPTY;
 
     XSRETURN_YES;
@@ -2586,7 +2635,7 @@ ALIAS:
 PPCODE:
 {
     /* NEXTKEY has an additional "lastkey" arg, which is not needed here */
-    WINOLEOBJECT *pObj = GetOleObject(self);
+    WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ self);
     char *paszMethod[] = {"FIRSTKEY", "NEXTKEY", "FIRSTENUM", "NEXTENUM"};
 
     DBG(("%s called, pObj=%p\n", paszMethod[ix], pObj));
@@ -2594,23 +2643,23 @@ PPCODE:
 	XSRETURN_UNDEF;
 
     HV *stash = SvSTASH(pObj->self);
-    SetLastOleError(stash);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     switch (ix)
     {
     case 0: /* FIRSTKEY */
-	FetchTypeInfo(pObj);
+	FetchTypeInfo(PERL_OBJECT_THIS_ pObj);
 	pObj->PropIndex = 0;
     case 1: /* NEXTKEY */
-	ST(0) = NextPropertyName(pObj);
+	ST(0) = NextPropertyName(PERL_OBJECT_THIS_ pObj);
 	break;
 
     case 2: /* FIRSTENUM */
 	if (pObj->pEnum != NULL)
 	    pObj->pEnum->Release();
-	pObj->pEnum = CreateEnumVARIANT(pObj);
+	pObj->pEnum = CreateEnumVARIANT(PERL_OBJECT_THIS_ pObj);
     case 3: /* NEXTENUM */
-	ST(0) = NextEnumElement(pObj->pEnum, stash);
+	ST(0) = NextEnumElement(PERL_OBJECT_THIS_ pObj->pEnum, stash);
 	if (!SvOK(ST(0))) {
 	    pObj->pEnum->Release();
 	    pObj->pEnum = NULL;
@@ -2643,15 +2692,15 @@ PPCODE:
     CLSID clsid;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
-    HRESULT res;
+    HRESULT hr;
     LCID lcid = lcidDefault;
     UINT cp = cpDefault;
     HV *stash = gv_stashpv(szWINOLE, TRUE);
     HV *hv;
     unsigned int count;
 
-    Initialize();
-    SetLastOleError(stash);
+    Initialize(PERL_OBJECT_THIS);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     if (SvIOK(locale))
 	lcid = SvIV(locale);
@@ -2662,47 +2711,50 @@ PPCODE:
     if (sv_derived_from(classid, szWINOLE)) {
 	/* Get containing typelib from IDispatch interface */
 	ITypeInfo *pTypeInfo;
-	WINOLEOBJECT *pObj = GetOleObject(classid);
+	WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ classid);
 	if (pObj == NULL)
 	    XSRETURN_UNDEF;
 
 	stash = SvSTASH(pObj->self);
-	res = pObj->pDispatch->GetTypeInfoCount(&count);
-	if (CheckOleError(stash, res) || count == 0)
+	hr = pObj->pDispatch->GetTypeInfoCount(&count);
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr) || count == 0)
 	    XSRETURN_UNDEF;
 
-	lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-	cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+			   lcidDefault);
+	cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN, cpDefault);
 
-	res = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
-	if (CheckOleError(stash, res))
+	hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	    XSRETURN_UNDEF;
 
-	res = pTypeInfo->GetContainingTypeLib(&pTypeLib, &count);
+	hr = pTypeInfo->GetContainingTypeLib(&pTypeLib, &count);
 	pTypeInfo->Release();
-	if (CheckOleError(stash, res))
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	    XSRETURN_UNDEF;
     }
     else {
 	/* try to load registered typelib by classid, version and lcid */
 	STRLEN len;
 	char *pszBuffer = SvPV(classid, len);
-	pBuffer = GetWideChar(pszBuffer, Buffer, OLE_BUF_SIZ, cp);
-	res = CLSIDFromString(pBuffer, &clsid);
-	ReleaseBuffer(pBuffer, Buffer);
+	pBuffer = GetWideChar(PERL_OBJECT_THIS_ pszBuffer,
+			      Buffer, OLE_BUF_SIZ, cp);
+	hr = CLSIDFromString(pBuffer, &clsid);
+	ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
 
-	if (CheckOleError(stash, res))
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	    XSRETURN_UNDEF;
 
-	res = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
-	if (FAILED(res) && SvPOK(typelib)) {
+	hr = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
+	if (FAILED(hr) && SvPOK(typelib)) {
 	    /* typelib not registerd, try to read from file "typelib" */
 	    pszBuffer = SvPV(typelib, len);
-	    pBuffer = GetWideChar(pszBuffer, Buffer, OLE_BUF_SIZ, cp);
-	    res = LoadTypeLib(pBuffer, &pTypeLib);
-	    ReleaseBuffer(pBuffer, Buffer);
+	    pBuffer = GetWideChar(PERL_OBJECT_THIS_ pszBuffer,
+				  Buffer, OLE_BUF_SIZ, cp);
+	    hr = LoadTypeLib(pBuffer, &pTypeLib);
+	    ReleaseBuffer(PERL_OBJECT_THIS_ pBuffer, Buffer);
 	}
-	if (CheckOleError(stash, res))
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	    XSRETURN_UNDEF;
     }
 
@@ -2721,25 +2773,25 @@ PPCODE:
     count = pTypeLib->GetTypeInfoCount();
     for (int index=0 ; index < count ; ++index) {
 	ITypeInfo *pTypeInfo;
-	LPTYPEATTR pTypeAttr;
+	TYPEATTR  *pTypeAttr;
 
-	res = pTypeLib->GetTypeInfo(index, &pTypeInfo);
-	if (CheckOleError(stash, res))
+	hr = pTypeLib->GetTypeInfo(index, &pTypeInfo);
+	if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	    continue;
 
-	res = pTypeInfo->GetTypeAttr(&pTypeAttr);
-	if (FAILED(res)) {
+	hr = pTypeInfo->GetTypeAttr(&pTypeAttr);
+	if (FAILED(hr)) {
 	    pTypeInfo->Release();
-	    ReportOleError(stash, res);
+	    ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 	    continue;
 	}
 
 	for (int iVar=0 ; iVar < pTypeAttr->cVars ; ++iVar) {
-	    LPVARDESC pVarDesc;
+	    VARDESC *pVarDesc;
 
-	    res = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
+	    hr = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
 	    /* XXX LEAK alert */
-	    if (CheckOleError(stash, res))
+	    if (CheckOleError(PERL_OBJECT_THIS_ stash, hr))
 	        continue;
 
 	    if (pVarDesc->varkind == VAR_CONST &&
@@ -2751,15 +2803,20 @@ PPCODE:
 		BSTR bstr;
 		char szName[64];
 
-		res = pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
-		if (CheckOleError(stash, res) || cName == 0 || bstr == NULL)
+		hr = pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
+		if (CheckOleError(PERL_OBJECT_THIS_ stash, hr) || 
+		    cName == 0 || bstr == NULL)
+		{
 		    continue;
+		}
 
-		char *pszName = GetMultiByte(bstr, szName, sizeof(szName), cp);
+		char *pszName = GetMultiByte(PERL_OBJECT_THIS_ bstr,
+					     szName, sizeof(szName), cp);
 		SV *sv = newSVpv("",0);
 		/* XXX LEAK alert */
-		res = SetSVFromVariant(pVarDesc->lpvarValue, sv, stash);
-		if (!CheckOleError(stash, res)) {
+		hr = SetSVFromVariant(PERL_OBJECT_THIS_ pVarDesc->lpvarValue,
+				      sv, stash);
+		if (!CheckOleError(PERL_OBJECT_THIS_ stash, hr)) {
 		    if (SvOK(caller)) {
 			/* XXX check for valid symbol name */
 			newCONSTSUB(hv, pszName, sv);
@@ -2768,7 +2825,7 @@ PPCODE:
 		        hv_store(hv, pszName, strlen(pszName), sv, 0);
 		}
 		SysFreeString(bstr);
-		ReleaseBuffer(pszName, szName);
+		ReleaseBuffer(PERL_OBJECT_THIS_ pszName, szName);
 	    }
 	    pTypeInfo->ReleaseVarDesc(pVarDesc);
 	}
@@ -2798,19 +2855,19 @@ PPCODE:
     New(0, pEnumObj, 1, WINOLEENUMOBJECT);
 
     if (ix == 0) { /* new */
-	WINOLEOBJECT *pObj = GetOleObject(object);
+	WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ object);
 	if (pObj != NULL) {
 	    pEnumObj->stash = SvSTASH(pObj->self);
-	    SetLastOleError(pEnumObj->stash);
-	    pEnumObj->pEnum = CreateEnumVARIANT(pObj);
+	    SetLastOleError(PERL_OBJECT_THIS_ pEnumObj->stash);
+	    pEnumObj->pEnum = CreateEnumVARIANT(PERL_OBJECT_THIS_ pObj);
 	}
     }
     else { /* Clone */
-	WINOLEENUMOBJECT *pOriginal = GetOleEnumObject(self);
+	WINOLEENUMOBJECT *pOriginal = GetOleEnumObject(PERL_OBJECT_THIS_ self);
 	if (pOriginal != NULL) {
-	    HRESULT res = pOriginal->pEnum->Clone(&pEnumObj->pEnum);
-	    SetLastOleError(pOriginal->stash);
-	    CheckOleError(pOriginal->stash, res);
+	    HRESULT hr = pOriginal->pEnum->Clone(&pEnumObj->pEnum);
+	    SetLastOleError(PERL_OBJECT_THIS_ pOriginal->stash);
+	    CheckOleError(PERL_OBJECT_THIS_ pOriginal->stash, hr);
 	    pEnumObj->stash = pOriginal->stash;
 	}
     }
@@ -2820,11 +2877,13 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
-    AddToObjectChain((OBJECTHEADER*)pEnumObj, WINOLEENUM_MAGIC);
     SvREFCNT_inc(pEnumObj->stash);
+    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pEnumObj,
+		     WINOLEENUM_MAGIC);
 
     SV *sv = newSViv((IV)pEnumObj);
-    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), GetStash(self)));
+    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv),
+				GetStash(PERL_OBJECT_THIS_ self)));
     XSRETURN(1);
 }
 
@@ -2833,9 +2892,10 @@ DESTROY(self)
     SV *self
 PPCODE:
 {
-    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self, TRUE);
+    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(PERL_OBJECT_THIS_ self, TRUE);
     if (pEnumObj != NULL) {
-	RemoveFromObjectChain((OBJECTHEADER*)pEnumObj);
+	RemoveFromObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pEnumObj);
+	SvREFCNT_dec(pEnumObj->stash);
 	if (pEnumObj->pEnum != NULL)
 	    pEnumObj->pEnum->Release();
 	Safefree(pEnumObj);
@@ -2848,7 +2908,7 @@ Next(self,...)
     SV *self
 PPCODE:
 {
-    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(PERL_OBJECT_THIS_ self);
     if (pEnumObj == NULL)
 	XSRETURN_UNDEF;
 
@@ -2859,11 +2919,12 @@ PPCODE:
 	count = 1;
     }
 
-    SetLastOleError(pEnumObj->stash);
+    SetLastOleError(PERL_OBJECT_THIS_ pEnumObj->stash);
 
     SV *sv = NULL;
     while (count-- > 0) {
-	sv = NextEnumElement(pEnumObj->pEnum, pEnumObj->stash);
+	sv = NextEnumElement(PERL_OBJECT_THIS_ pEnumObj->pEnum,
+			     pEnumObj->stash);
 	if (!SvOK(sv))
 	    break;
 	if (!SvIMMORTAL(sv))
@@ -2881,14 +2942,14 @@ Reset(self)
     SV *self
 PPCODE:
 {
-    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(PERL_OBJECT_THIS_ self);
     if (pEnumObj == NULL)
 	XSRETURN_NO;
 
-    SetLastOleError(pEnumObj->stash);
-    HRESULT res = pEnumObj->pEnum->Reset();
-    CheckOleError(pEnumObj->stash, res);
-    ST(0) = boolSV(res == S_OK);
+    SetLastOleError(PERL_OBJECT_THIS_ pEnumObj->stash);
+    HRESULT hr = pEnumObj->pEnum->Reset();
+    CheckOleError(PERL_OBJECT_THIS_ pEnumObj->stash, hr);
+    ST(0) = boolSV(hr == S_OK);
     XSRETURN(1);
 }
 
@@ -2897,15 +2958,15 @@ Skip(self,...)
     SV *self
 PPCODE:
 {
-    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(PERL_OBJECT_THIS_ self);
     if (pEnumObj == NULL)
 	XSRETURN_NO;
 
-    SetLastOleError(pEnumObj->stash);
+    SetLastOleError(PERL_OBJECT_THIS_ pEnumObj->stash);
     int count = (items > 1) ? SvIV(ST(1)) : 1;
-    HRESULT res = pEnumObj->pEnum->Skip(count);
-    CheckOleError(pEnumObj->stash, res);
-    ST(0) = boolSV(res == S_OK);
+    HRESULT hr = pEnumObj->pEnum->Skip(count);
+    CheckOleError(PERL_OBJECT_THIS_ pEnumObj->stash, hr);
+    ST(0) = boolSV(hr == S_OK);
     XSRETURN(1);
 }
 
@@ -2922,13 +2983,13 @@ PPCODE:
 {
     char *ptr;
     STRLEN length;
-    HV *stash = GetStash(self);
-    HRESULT res;
+    HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+    HRESULT hr;
     WINOLEVARIANTOBJECT *pVarObj;
 
     // XXX Initialize should be superfluous here
     // Initialize();
-    SetLastOleError(stash);
+    SetLastOleError(PERL_OBJECT_THIS_ stash);
 
     New(0, pVarObj, 1, WINOLEVARIANTOBJECT);
     VariantInit(&pVarObj->variant);
@@ -2964,29 +3025,34 @@ PPCODE:
     case VT_CY:
     case VT_DATE:
     {
-	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
-	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+				lcidDefault);
+	UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN,
+			      cpDefault);
 
 	V_VT(&pVarObj->variant) = VT_BSTR;
 	ptr = SvPV(data, length);
-	V_BSTR(&pVarObj->variant) = AllocOleString(ptr, length, cp);
+	V_BSTR(&pVarObj->variant) = AllocOleString(PERL_OBJECT_THIS_ ptr,
+						   length, cp);
 	VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant, lcid,0, vt);
 	break;
     }
 
     case VT_BSTR:
     {
-	UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = QueryPkgVar(PERL_OBJECT_THIS_ stash, CP_NAME, CP_LEN,
+			      cpDefault);
 
 	ptr = SvPV(data, length);
-	V_BSTR(&pVarObj->variant) = AllocOleString(ptr, length, cp);
+	V_BSTR(&pVarObj->variant) = AllocOleString(PERL_OBJECT_THIS_ ptr,
+						   length, cp);
 	break;
     }
 
     case VT_DISPATCH:
     {
 	/* Argument MUST be a valid Perl OLE object! */
-	WINOLEOBJECT *pObj = GetOleObject(data);
+	WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ data);
 	if (pObj == NULL)
 	    V_VT(&pVarObj->variant) = VT_EMPTY;
 	else {
@@ -3012,14 +3078,14 @@ PPCODE:
     {
 	/* Argument MUST be a valid Perl OLE object! */
 	/* Query IUnknown interface to allow identity tests */
-	WINOLEOBJECT *pObj = GetOleObject(data);
+	WINOLEOBJECT *pObj = GetOleObject(PERL_OBJECT_THIS_ data);
 	if (pObj == NULL)
 	    V_VT(&pVarObj->variant) = VT_EMPTY;
 	else {
-	    res = pObj->pDispatch->QueryInterface(IID_IUnknown,
+	    hr = pObj->pDispatch->QueryInterface(IID_IUnknown,
 			           (void**)&V_UNKNOWN(&pVarObj->variant));
 	    pVarObj->stash = SvSTASH(pObj->self); /* XXX refcnt ??? */
-	    CheckOleError(SvSTASH(pObj->self), res);
+	    CheckOleError(PERL_OBJECT_THIS_ SvSTASH(pObj->self), hr);
 	}
 	break;
     }
@@ -3033,11 +3099,11 @@ PPCODE:
 							       length);
 	    if (V_ARRAY(&pVarObj->variant) != NULL) {
 		V_VT(&pVarObj->variant) = VT_UI1 | VT_ARRAY;
-		res = SafeArrayAccessData(V_ARRAY(&pVarObj->variant),
+		hr = SafeArrayAccessData(V_ARRAY(&pVarObj->variant),
 						   (void**)&pDest);
-		if (FAILED(res)) {
+		if (FAILED(hr)) {
 		    VariantClear(&pVarObj->variant);
-		    ReportOleError(stash, res);
+		    ReportOleError(PERL_OBJECT_THIS_ stash, hr);
 		}
 		else {
 		    memcpy(pDest, ptr, length);
@@ -3065,7 +3131,8 @@ PPCODE:
 	V_BYREF(&pVarObj->variant) = &V_UI1(&pVarObj->byref);
     }
 
-    AddToObjectChain((OBJECTHEADER*)pVarObj, WINOLEVARIANT_MAGIC);
+    AddToObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pVarObj,
+		     WINOLEVARIANT_MAGIC);
 
     SV *sv = newSViv((IV)pVarObj);
     ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
@@ -3077,9 +3144,9 @@ DESTROY(self)
     SV *self
 PPCODE:
 {
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
     if (pVarObj != NULL) {
-	RemoveFromObjectChain((OBJECTHEADER*)pVarObj);
+	RemoveFromObjectChain(PERL_OBJECT_THIS_ (OBJECTHEADER*)pVarObj);
 	VariantClear(&pVarObj->byref);
 	VariantClear(&pVarObj->variant);
 	/* XXX dec refcnt(stash) ??? */
@@ -3096,17 +3163,18 @@ ALIAS:
     Value = 1
 PPCODE:
 {
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
 
     ST(0) = &PL_sv_undef;
     if (pVarObj != NULL) {
-	HV *stash = GetStash(self);
-	SetLastOleError(stash); /* XXX */
+	HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+	SetLastOleError(PERL_OBJECT_THIS_ stash); /* XXX */
 	ST(0) = sv_newmortal();
 	if (ix == 0)
 	    sv_setiv(ST(0), V_VT(&pVarObj->variant));
 	else
-	    SetSVFromVariant(&pVarObj->variant, ST(0), pVarObj->stash);
+	    SetSVFromVariant(PERL_OBJECT_THIS_ &pVarObj->variant,
+			     ST(0), pVarObj->stash);
     }
     XSRETURN(1);
 }
@@ -3117,24 +3185,25 @@ As(self,type)
     IV type
 PPCODE:
 {
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
 
     ST(0) = &PL_sv_undef;
     if (pVarObj != NULL) {
-	HRESULT res;
+	HRESULT hr;
 	VARIANT variant;
-	HV *stash = GetStash(self);
-	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+	HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+	LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+				lcidDefault);
 
-	SetLastOleError(stash);
+	SetLastOleError(PERL_OBJECT_THIS_ stash);
 	VariantInit(&variant);
-	res = VariantChangeTypeEx(&variant, &pVarObj->variant, lcid, 0, type);
-	if (SUCCEEDED(res)) {
+	hr = VariantChangeTypeEx(&variant, &pVarObj->variant, lcid, 0, type);
+	if (SUCCEEDED(hr)) {
 	    ST(0) = sv_newmortal();
-	    SetSVFromVariant(&variant, ST(0), pVarObj->stash);
+	    SetSVFromVariant(PERL_OBJECT_THIS_ &variant, ST(0), pVarObj->stash);
 	}
 	VariantClear(&variant);
-	CheckOleError(stash, res);
+	CheckOleError(PERL_OBJECT_THIS_ stash, hr);
     }
     XSRETURN(1);
 }
@@ -3145,21 +3214,22 @@ ChangeType(self,type)
     IV type
 PPCODE:
 {
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
-    HRESULT res = E_INVALIDARG;
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
+    HRESULT hr = E_INVALIDARG;
 
     if (pVarObj != NULL) {
-	HV *stash = GetStash(self);
-	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+	HV *stash = GetStash(PERL_OBJECT_THIS_ self);
+	LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash, LCID_NAME, LCID_LEN,
+				lcidDefault);
 
-	SetLastOleError(stash);
+	SetLastOleError(PERL_OBJECT_THIS_ stash);
 	/* XXX: Does it work with VT_BYREF? */
-	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant,
+	hr = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant,
 				  lcid, 0, type);
-	CheckOleError(stash, res);
+	CheckOleError(PERL_OBJECT_THIS_ stash, hr);
     }
 
-    if (FAILED(res))
+    if (FAILED(hr))
 	ST(0) = &PL_sv_undef;
 
     XSRETURN(1);
@@ -3170,25 +3240,26 @@ Unicode(self)
     SV *self
 PPCODE:
 {
-    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(PERL_OBJECT_THIS_ self);
 
     ST(0) = &PL_sv_undef;
     if (pVarObj != NULL) {
-	HV *stash = GetStash(self);
+	HV *stash = GetStash(PERL_OBJECT_THIS_ self);
 	VARIANT Variant;
 	VARIANT *pVariant = &pVarObj->variant;
-	HRESULT res = S_OK;
+	HRESULT hr = S_OK;
 
-	SetLastOleError(stash);
+	SetLastOleError(PERL_OBJECT_THIS_ stash);
 	VariantInit(&Variant);
 	if ((V_VT(pVariant) & ~VT_BYREF) != VT_BSTR) {
-	    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+	    LCID lcid = QueryPkgVar(PERL_OBJECT_THIS_ stash,
+				    LCID_NAME, LCID_LEN, lcidDefault);
 
-	    res = VariantChangeTypeEx(&Variant, pVariant, lcid, 0, VT_BSTR);
+	    hr = VariantChangeTypeEx(&Variant, pVariant, lcid, 0, VT_BSTR);
 	    pVariant = &Variant;
 	}
 
-	if (!CheckOleError(stash, res)) {
+	if (!CheckOleError(PERL_OBJECT_THIS_ stash, hr)) {
 	    BSTR bstr = V_ISBYREF(pVariant) ? *V_BSTRREF(pVariant)
 		                            : V_BSTR(pVariant);
 	    STRLEN olecharlen = SysStringLen(bstr);
@@ -3241,7 +3312,8 @@ PPCODE:
     if (len > 0) {
 	SvUPGRADE(sv, SVt_PV);
 	SvGROW(sv, len+1);
-	SvCUR(sv) = LCMapStringA(lcid, flags, string, length, SvPVX(sv), SvLEN(sv));
+	SvCUR(sv) = LCMapStringA(lcid, flags, string, length,
+				 SvPVX(sv), SvLEN(sv));
 	if (SvCUR(sv))
 	    SvPOK_on(sv);
     }
