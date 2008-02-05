@@ -30,8 +30,8 @@ sub Load {
     foreach my $Typelib (@$Typelibs) {
 	my ($clsid,$title,$version,$langid,$filename) = @$Typelib;
 	next unless $title =~ /^$name/;
-	my ($maj,$min) = ($version =~ /^(\d+)\.(\d+)$/);
-	next unless defined $min;
+	next unless $version =~ /^([0-9a-fA-F]+)\.([0-9a-fA-F]+)$/;
+	my ($maj,$min) = (hex($1), hex($2));
 	next if defined($major) && $maj != $major;
 	next if defined($minor) && $min < $minor;
 	next if defined($language) && $language != $langid;

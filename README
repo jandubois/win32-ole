@@ -1,9 +1,12 @@
-This is a port of the OLE extensions distributed by Activeware
-to the official perl distribution on Win32.  You will need
-Perl version 5.004_01 or later to use this.
+The Win32::OLE module provides OLE Automation capabilities to Perl.
+It is based on the OLE module distributed by ActiveState with
+their "Perl for Win32" port of Perl 5.003_07. Win32::OLE replaces
+the older OLE module, which is now considered obsolete. Win32::OLE
+is already included in the ActivePerl binary distribution.
 
-Installation is simple: you will need Visual C++ 4.2b or above,
-or Borland C++ 4.02 or above.
+This module is compatible with Perl 5.004_01 and above. Compilation
+requires either Microsoft Visual C++ 4.2b or later, or Borland C++
+version 4.02 or above.
 
 Do:
 
@@ -16,8 +19,9 @@ where $make is either "nmake" or "dmake".
 
 See the pod documentation for details of usage.
 
-Please look into the compatibity section at the end of the
-documentation if you were previously using the ActiveWare version
-of the OLE extension! It also describes planned future changes that
-might result in incompatibilities if you use undocumented features
-of this module.
+The file NEWS.pod contains a history of user visible changes against the
+previous version.
+
+***WARNING*** This version of the module contains ALPHA level support for
+OLE events. This support doesn't work yet for some OLE controls and the
+user interface is still subject to change!

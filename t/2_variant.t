@@ -9,7 +9,7 @@
 
 use strict;
 use FileHandle;
-use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG);
+use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG :DATE :TIME);
 use Win32::OLE::Variant qw(:DEFAULT CP_ACP);
 
 $^W = 1;
@@ -82,6 +82,7 @@ $v->ChangeType(VT_I4);
 printf "# Before: $Before After: %x\n", Win32::OLE->LastError;
 print "not " unless $Before == 0 && Win32::OLE->LastError != 0;
 printf "ok %d\n", ++$Test;
+Win32::OLE->Option(Warn => 1);
 
 # 10. Backward compatibility: does Win32::OLE::Variant->LastError() still work?
 printf "# Win32::OLE::Variant->LastError: %x\n", Win32::OLE::Variant->LastError;
@@ -94,7 +95,7 @@ printf "# Type=%x String=\"%s\"\n", $v->Type, $v->Value;
 print "not " unless $v->Type == VT_UI1|VT_ARRAY && $v->Value eq "Some string";
 printf "ok %d\n", ++$Test;
 
-# 12. A numeric intializer should create a normal VT_UI1 variant
+# 12. A numeric initializer should create a normal VT_UI1 variant
 $v = Variant(VT_UI1, ord('A'));
 printf "# Type=%x Value='%c'\n", $v->Type, $v->Value;
 print "not " unless $v->Type == VT_UI1 && $v->Value == ord('A');
@@ -185,4 +186,78 @@ printf "ok %d\n", ++$Test;
 $t = $v->Copy(0,1);
 printf "# Type=%x Value=\"%s\"\n", $t->Type, $t->Value;
 print "not " unless $t->Type == VT_BSTR and $t->Value eq 'Perl';
+printf "ok %d\n", ++$Test;
+
+# 24. Put() returns reference to $self
+$v->Put(0,1,'One')->Put(1,1,2);
+printf "# One=\"%s\" Two=%s\n", $v->Get(0,1), $v->Get(1,1);
+print "not " unless $v->Get(0,1) eq 'One' && $v->Get(1,1) == 2;
+printf "ok %d\n", ++$Test;
+
+# 25. Put(ARRAYREF) sets SAFEARRAY
+#$v = Variant(VT_ARRAY|VT_I4, 2, 2)->Put([[11, 12], [21, 22]]);
+$v = Variant(VT_ARRAY|VT_I4, 2, 2)->Put([[11, 12], [21, 22]]);
+printf "# Dim: %s\n", join(', ', map {'['.join(',', @$_).']'} $v->Dim);
+printf "# (0,0)=%d (0,1)=%d (1,0)=%d (1,1)=%d\n", $v->Get(0,0), $v->Get(0,1),
+                                                  $v->Get(1,0), $v->Get(1,1);
+print "not " unless $v->Get(0,0) == 11 && $v->Get(1,1) == 22;
+printf "ok %d\n", ++$Test;
+
+# 26. Float -> CURRENCY conversion in non-english locale
+Win32::OLE->Option(LCID => $lcidGerman);
+my $cy = Variant(VT_CY, 1.2345);
+printf "# VT_CY String is '%s' Number is '%f'\n", $cy, $cy;
+print "not " unless $cy == 1.2345;
+printf "ok %d\n", ++$Test;
+
+# 27. GetDateFormat with formating options
+Win32::OLE->Option(LCID => $lcidEnglish);
+$v = Variant(VT_DATE, "1 may 1999 17:00");
+my $str = $v->Date(DATE_LONGDATE);
+print "# LONGDATE is '$str'\n";
+print "not " unless $str eq 'Saturday, May 01, 1999';
+printf "ok %d\n", ++$Test;
+
+# 28. GetDateFormat with formating string
+$str = $v->Date('dd-MMM-yyyy');
+print "# dd-MMM-yyyy is '$str'\n";
+print "not " unless $str eq '01-May-1999';
+printf "ok %d\n", ++$Test;
+
+# 29. GetDateFormat with locale id
+$str = $v->Date(DATE_LONGDATE, $lcidGerman);
+print "# German LONGDATE is '$str'\n";
+print "not " unless $str eq 'Samstag, 1. Mai 1999';
+printf "ok %d\n", ++$Test;
+
+# 30. Currency variant with maximum negative value
+my $val = "-922337203685477.5808";
+$v = Variant(VT_CY, $val);
+print "# Big currency value as BSTR: $v\n";
+print "not " unless $v eq $val;
+printf "ok %d\n", ++$Test;
+
+# 31. R8 doesn't have enough precission to accurately hold the CY value
+printf "# Big currency value as R8: %.4f\n", $v;
+print "not " if $v->As(VT_R8) eq $val;
+printf "ok %d\n", ++$Test;
+
+# 32. Format as currency with 4 decimal places
+$str = $v->Currency({NumDigits => 4});
+printf "# Big currency value as CY: $str\n";
+print "not " unless $str eq '($922,337,203,685,477.5808)';
+printf "ok %d\n", ++$Test;
+
+# 33. Use both a CURRENCYFMT hash *and* a locale id
+$str = $v->Currency({CurrencySymbol => "Tuits"}, $lcidGerman);
+printf "# Big currency value as tuits: $str\n";
+print "not " unless $str eq '-922.337.203.685.477,58 Tuits';
+printf "ok %d\n", ++$Test;
+
+# 34. Test VARIANT->Put(ARRAYREF)
+$v = Variant(VT_ARRAY|VT_I4, 2, 2);
+$v->Put([[1,2],[3,4]]);
+$v = Variant(VT_BYREF|VT_VARIANT, $v);
+printf "# v(0,0)=%d v(1,1)=%d\n", $v->Get(0,0), $v->Get(1,1);
+print "not " unless $v->Get(0,0) == 1 && $v->Get(1,1) == 4;
 printf "ok %d\n", ++$Test;

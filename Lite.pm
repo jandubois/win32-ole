@@ -3,22 +3,26 @@ package Win32::OLE;
 sub _croak { require Carp; Carp::croak(@_) }
 
 unless (defined &Dispatch) {
-    DynaLoader::boot_DynaLoader('DynaLoader') unless defined(&DynaLoader::dl_load_file);
+    DynaLoader::boot_DynaLoader('DynaLoader')
+	    unless defined(&DynaLoader::dl_load_file);
     my $file;
     foreach my $dir (@INC) {
 	my $try = "$dir/auto/Win32/OLE/OLE.dll";
 	last if $file = (-f $try && $try);
     }
-    _croak("Can't locate loadable object for module Win32::OLE in \@INC (\@INC contains: @INC)")
+    _croak("Can't locate loadable object for module Win32::OLE".
+	   " in \@INC (\@INC contains: @INC)")
 	unless $file;	# wording similar to error from 'require'
 
     my $libref = DynaLoader::dl_load_file($file, 0) or
-	_croak("Can't load '$file' for module Win32::OLE: ".DynaLoader::dl_error()."\n");
+	_croak("Can't load '$file' for module Win32::OLE: ".
+	       DynaLoader::dl_error()."\n");
 
-    my $boot_symbol_ref = DynaLoader::dl_find_symbol($libref, "boot_Win32__OLE") or
-         _croak("Can't find 'boot_Win32__OLE' symbol in $file\n");
+    my $boot_symbol_ref = DynaLoader::dl_find_symbol($libref, "boot_Win32__OLE")
+	or _croak("Can't find 'boot_Win32__OLE' symbol in $file\n");
 
-    my $xs = DynaLoader::dl_install_xsub("Win32::OLE::bootstrap", $boot_symbol_ref, $file);
+    my $xs = DynaLoader::dl_install_xsub("Win32::OLE::bootstrap",
+					 $boot_symbol_ref, $file);
     &$xs('Win32::OLE');
 }
 
@@ -36,11 +40,11 @@ sub DISPATCH_PROPERTYGET     {2;}
 sub DISPATCH_PROPERTYPUT     {4;}
 sub DISPATCH_PROPERTYPUTREF  {8;}
 
-sub COINIT_MULTITHREADED      {0;}  # Default
-sub COINIT_APARTMENTTHREADED  {2;}  # Use single threaded apartment model
+sub COINIT_MULTITHREADED     {0;}  # Default
+sub COINIT_APARTMENTTHREADED {2;}  # Use single threaded apartment model
 
 # Bogus COINIT_* values to indicate special cases:
-sub COINIT_OLEINITIALIZE      {-1;} # Use OleInitialize instead of CoInitializeEx
+sub COINIT_OLEINITIALIZE     {-1;} # Use OleInitialize instead of CoInitializeEx
 
 # CreateObject is defined here only because it is documented in the
 # "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().

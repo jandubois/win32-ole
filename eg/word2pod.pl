@@ -8,7 +8,7 @@ my $File = $ARGV[0];
 $File = Win32::GetCwd() . "/$File" if $File !~ /^(\w:)?[\/\\]/;
 die "File $ARGV[0] does not exist" unless -f $File;
 
-my $Word = Win32::OLE->new('Word.Application', 'Quit') 
+my $Word = Win32::OLE->new('Word.Application', 'Quit')
   or die "Couldn't run Word";
 
 my $Doc = $Word->Documents->Open($File);
@@ -26,14 +26,14 @@ my %Style = (
   );
 
 # The following styles will not break list mode
-my %ListStyle = map {$_ => 1} @Style{qw(List ListBullet ListContinue 
+my %ListStyle = map {$_ => 1} @Style{qw(List ListBullet ListContinue
 					ListNumber PlainText)};
 
 # We don't want to encode Bold/Italic/Code in headings or plaintext
 foreach my $Style (wdStyleHeading1, wdStyleHeading2, wdStylePlainText) {
-    with($Doc->Styles($Style)->Font, 
-	 Bold   => 0, 
-	 Italic => 0, 
+    with($Doc->Styles($Style)->Font,
+	 Bold   => 0,
+	 Italic => 0,
 	 Name   => 'Times New Roman',
 	);
 }

@@ -30,7 +30,9 @@ use Exporter;
 	     LOCALE_USER_DEFAULT
 	    );
 
-%EXPORT_TAGS = 
+@EXPORT_OK = qw(SetLocaleInfo SendSettingChange);
+
+%EXPORT_TAGS =
 (
  CT	 => [qw(CT_CTYPE1 CT_CTYPE2 CT_CTYPE3)],
  C1	 => [qw(C1_UPPER C1_LOWER C1_DIGIT C1_SPACE C1_PUNCT
@@ -52,7 +54,7 @@ use Exporter;
 		LANG_GREEK LANG_HEBREW LANG_HUNGARIAN LANG_ICELANDIC
 		LANG_ITALIAN LANG_JAPANESE LANG_KOREAN LANG_NORWEGIAN
 		LANG_POLISH LANG_PORTUGUESE LANG_RHAETO_ROMAN LANG_ROMANIAN
-		LANG_RUSSIAN LANG_SERBO_CROATIAN LANG_SLOVAK LANG_SPANISH 
+		LANG_RUSSIAN LANG_SERBO_CROATIAN LANG_SLOVAK LANG_SPANISH
 		LANG_SWEDISH LANG_THAI LANG_TURKISH LANG_URDU)],
  SUBLANG => [qw(SUBLANG_NEUTRAL SUBLANG_DEFAULT SUBLANG_SYS_DEFAULT
 		SUBLANG_CHINESE_SIMPLIFIED SUBLANG_CHINESE_TRADITIONAL
@@ -109,7 +111,11 @@ use Exporter;
 		LOCALE_SABBREVMONTHNAME12 LOCALE_SABBREVMONTHNAME13
 		LOCALE_SPOSITIVESIGN LOCALE_SNEGATIVESIGN LOCALE_IPOSSIGNPOSN
 		LOCALE_INEGSIGNPOSN LOCALE_IPOSSYMPRECEDES LOCALE_IPOSSEPBYSPACE
-		LOCALE_INEGSYMPRECEDES LOCALE_INEGSEPBYSPACE)]
+		LOCALE_INEGSYMPRECEDES LOCALE_INEGSEPBYSPACE)],
+ TIME    => [qw(TIME_NOMINUTESORSECONDS TIME_NOSECONDS TIME_NOTIMEMARKER
+                TIME_FORCE24HOURFORMAT)],
+ DATE    => [qw(DATE_SHORTDATE DATE_LONGDATE DATE_USE_ALT_CALENDAR
+                DATE_YEARMONTH DATE_LTRREADING DATE_RTLREADING)],
 );
 
 foreach my $tag (keys %EXPORT_TAGS) {
@@ -117,265 +123,279 @@ foreach my $tag (keys %EXPORT_TAGS) {
 }
 
 # Character Type Flags
-sub CT_CTYPE1                       { 0x0001; }
-sub CT_CTYPE2                       { 0x0002; }
-sub CT_CTYPE3                       { 0x0004; }
+sub CT_CTYPE1                       { 0x0001 }
+sub CT_CTYPE2                       { 0x0002 }
+sub CT_CTYPE3                       { 0x0004 }
 
 # Character Type 1 Bits
-sub C1_UPPER                        { 0x0001; }
-sub C1_LOWER                        { 0x0002; }
-sub C1_DIGIT                        { 0x0004; }
-sub C1_SPACE                        { 0x0008; }
-sub C1_PUNCT                        { 0x0010; }
-sub C1_CNTRL                        { 0x0020; }
-sub C1_BLANK                        { 0x0040; }
-sub C1_XDIGIT                       { 0x0080; }
-sub C1_ALPHA                        { 0x0100; }
+sub C1_UPPER                        { 0x0001 }
+sub C1_LOWER                        { 0x0002 }
+sub C1_DIGIT                        { 0x0004 }
+sub C1_SPACE                        { 0x0008 }
+sub C1_PUNCT                        { 0x0010 }
+sub C1_CNTRL                        { 0x0020 }
+sub C1_BLANK                        { 0x0040 }
+sub C1_XDIGIT                       { 0x0080 }
+sub C1_ALPHA                        { 0x0100 }
 
 # Character Type 2 Bits
-sub C2_LEFTTORIGHT                  { 0x1; }
-sub C2_RIGHTTOLEFT                  { 0x2; }
-sub C2_EUROPENUMBER                 { 0x3; }
-sub C2_EUROPESEPARATOR              { 0x4; }
-sub C2_EUROPETERMINATOR             { 0x5; }
-sub C2_ARABICNUMBER                 { 0x6; }
-sub C2_COMMONSEPARATOR              { 0x7; }
-sub C2_BLOCKSEPARATOR               { 0x8; }
-sub C2_SEGMENTSEPARATOR             { 0x9; }
-sub C2_WHITESPACE                   { 0xA; }
-sub C2_OTHERNEUTRAL                 { 0xB; }
-sub C2_NOTAPPLICABLE                { 0x0; }
+sub C2_LEFTTORIGHT                  { 0x1 }
+sub C2_RIGHTTOLEFT                  { 0x2 }
+sub C2_EUROPENUMBER                 { 0x3 }
+sub C2_EUROPESEPARATOR              { 0x4 }
+sub C2_EUROPETERMINATOR             { 0x5 }
+sub C2_ARABICNUMBER                 { 0x6 }
+sub C2_COMMONSEPARATOR              { 0x7 }
+sub C2_BLOCKSEPARATOR               { 0x8 }
+sub C2_SEGMENTSEPARATOR             { 0x9 }
+sub C2_WHITESPACE                   { 0xA }
+sub C2_OTHERNEUTRAL                 { 0xB }
+sub C2_NOTAPPLICABLE                { 0x0 }
 
 # Character Type 3 Bits
-sub C3_NONSPACING                   { 0x0001; }
-sub C3_DIACRITIC                    { 0x0002; }
-sub C3_VOWELMARK                    { 0x0004; }
-sub C3_SYMBOL                       { 0x0008; }
-sub C3_KATAKANA                     { 0x0010; }
-sub C3_HIRAGANA                     { 0x0020; }
-sub C3_HALFWIDTH                    { 0x0040; }
-sub C3_FULLWIDTH                    { 0x0080; }
-sub C3_IDEOGRAPH                    { 0x0100; }
-sub C3_KASHIDA                      { 0x0200; }
-sub C3_ALPHA                        { 0x8000; }
-sub C3_NOTAPPLICABLE                { 0x0; }
+sub C3_NONSPACING                   { 0x0001 }
+sub C3_DIACRITIC                    { 0x0002 }
+sub C3_VOWELMARK                    { 0x0004 }
+sub C3_SYMBOL                       { 0x0008 }
+sub C3_KATAKANA                     { 0x0010 }
+sub C3_HIRAGANA                     { 0x0020 }
+sub C3_HALFWIDTH                    { 0x0040 }
+sub C3_FULLWIDTH                    { 0x0080 }
+sub C3_IDEOGRAPH                    { 0x0100 }
+sub C3_KASHIDA                      { 0x0200 }
+sub C3_ALPHA                        { 0x8000 }
+sub C3_NOTAPPLICABLE                { 0x0 }
 
 # String Flags
-sub NORM_IGNORECASE                 { 0x0001; }
-sub NORM_IGNORENONSPACE             { 0x0002; }
-sub NORM_IGNORESYMBOLS              { 0x0004; }
-sub NORM_IGNOREWIDTH                { 0x0008; }
-sub NORM_IGNOREKANATYPE             { 0x0040; }
-sub NORM_IGNOREKASHIDA              { 0x40000;}
+sub NORM_IGNORECASE                 { 0x0001 }
+sub NORM_IGNORENONSPACE             { 0x0002 }
+sub NORM_IGNORESYMBOLS              { 0x0004 }
+sub NORM_IGNOREWIDTH                { 0x0008 }
+sub NORM_IGNOREKANATYPE             { 0x0040 }
+sub NORM_IGNOREKASHIDA              { 0x40000}
 
 # Locale Dependent Mapping Flags
-sub LCMAP_LOWERCASE                 { 0x0100; }
-sub LCMAP_UPPERCASE                 { 0x0200; }
-sub LCMAP_SORTKEY                   { 0x0400; }
-sub LCMAP_HALFWIDTH                 { 0x0800; }
-sub LCMAP_FULLWIDTH                 { 0x1000; }
-sub LCMAP_HIRAGANA                  { 0x2000; }
-sub LCMAP_KATAKANA                  { 0x4000; }
+sub LCMAP_LOWERCASE                 { 0x0100 }
+sub LCMAP_UPPERCASE                 { 0x0200 }
+sub LCMAP_SORTKEY                   { 0x0400 }
+sub LCMAP_HALFWIDTH                 { 0x0800 }
+sub LCMAP_FULLWIDTH                 { 0x1000 }
+sub LCMAP_HIRAGANA                  { 0x2000 }
+sub LCMAP_KATAKANA                  { 0x4000 }
 
 # Primary Language Identifier
-sub LANG_NEUTRAL                    { 0x00; }
-sub LANG_ALBANIAN                   { 0x1c; }
-sub LANG_ARABIC                     { 0x01; }
-sub LANG_BAHASA                     { 0x21; }
-sub LANG_BULGARIAN                  { 0x02; }
-sub LANG_CATALAN                    { 0x03; }
-sub LANG_CHINESE                    { 0x04; }
-sub LANG_CZECH                      { 0x05; }
-sub LANG_DANISH                     { 0x06; }
-sub LANG_DUTCH                      { 0x13; }
-sub LANG_ENGLISH                    { 0x09; }
-sub LANG_FINNISH                    { 0x0b; }
-sub LANG_FRENCH                     { 0x0c; }
-sub LANG_GERMAN                     { 0x07; }
-sub LANG_GREEK                      { 0x08; }
-sub LANG_HEBREW                     { 0x0d; }
-sub LANG_HUNGARIAN                  { 0x0e; }
-sub LANG_ICELANDIC                  { 0x0f; }
-sub LANG_ITALIAN                    { 0x10; }
-sub LANG_JAPANESE                   { 0x11; }
-sub LANG_KOREAN                     { 0x12; }
-sub LANG_NORWEGIAN                  { 0x14; }
-sub LANG_POLISH                     { 0x15; }
-sub LANG_PORTUGUESE                 { 0x16; }
-sub LANG_RHAETO_ROMAN               { 0x17; }
-sub LANG_ROMANIAN                   { 0x18; }
-sub LANG_RUSSIAN                    { 0x19; }
-sub LANG_SERBO_CROATIAN             { 0x1a; }
-sub LANG_SLOVAK                     { 0x1b; }
-sub LANG_SPANISH                    { 0x0a; }
-sub LANG_SWEDISH                    { 0x1d; }
-sub LANG_THAI                       { 0x1e; }
-sub LANG_TURKISH                    { 0x1f; }
-sub LANG_URDU                       { 0x20; }
+sub LANG_NEUTRAL                    { 0x00 }
+sub LANG_ALBANIAN                   { 0x1c }
+sub LANG_ARABIC                     { 0x01 }
+sub LANG_BAHASA                     { 0x21 }
+sub LANG_BULGARIAN                  { 0x02 }
+sub LANG_CATALAN                    { 0x03 }
+sub LANG_CHINESE                    { 0x04 }
+sub LANG_CZECH                      { 0x05 }
+sub LANG_DANISH                     { 0x06 }
+sub LANG_DUTCH                      { 0x13 }
+sub LANG_ENGLISH                    { 0x09 }
+sub LANG_FINNISH                    { 0x0b }
+sub LANG_FRENCH                     { 0x0c }
+sub LANG_GERMAN                     { 0x07 }
+sub LANG_GREEK                      { 0x08 }
+sub LANG_HEBREW                     { 0x0d }
+sub LANG_HUNGARIAN                  { 0x0e }
+sub LANG_ICELANDIC                  { 0x0f }
+sub LANG_ITALIAN                    { 0x10 }
+sub LANG_JAPANESE                   { 0x11 }
+sub LANG_KOREAN                     { 0x12 }
+sub LANG_NORWEGIAN                  { 0x14 }
+sub LANG_POLISH                     { 0x15 }
+sub LANG_PORTUGUESE                 { 0x16 }
+sub LANG_RHAETO_ROMAN               { 0x17 }
+sub LANG_ROMANIAN                   { 0x18 }
+sub LANG_RUSSIAN                    { 0x19 }
+sub LANG_SERBO_CROATIAN             { 0x1a }
+sub LANG_SLOVAK                     { 0x1b }
+sub LANG_SPANISH                    { 0x0a }
+sub LANG_SWEDISH                    { 0x1d }
+sub LANG_THAI                       { 0x1e }
+sub LANG_TURKISH                    { 0x1f }
+sub LANG_URDU                       { 0x20 }
 
 # Sublanguage Identifier
-sub SUBLANG_NEUTRAL                 { 0x00; }
-sub SUBLANG_DEFAULT                 { 0x01; }
-sub SUBLANG_SYS_DEFAULT             { 0x02; }
-sub SUBLANG_CHINESE_SIMPLIFIED      { 0x02; }
-sub SUBLANG_CHINESE_TRADITIONAL     { 0x01; }
-sub SUBLANG_DUTCH                   { 0x01; }
-sub SUBLANG_DUTCH_BELGIAN           { 0x02; }
-sub SUBLANG_ENGLISH_US              { 0x01; }
-sub SUBLANG_ENGLISH_UK              { 0x02; }
-sub SUBLANG_ENGLISH_AUS             { 0x03; }
-sub SUBLANG_ENGLISH_CAN             { 0x04; }
-sub SUBLANG_ENGLISH_NZ              { 0x05; }
-sub SUBLANG_ENGLISH_EIRE            { 0x06; }
-sub SUBLANG_FRENCH                  { 0x01; }
-sub SUBLANG_FRENCH_BELGIAN          { 0x02; }
-sub SUBLANG_FRENCH_CANADIAN         { 0x03; }
-sub SUBLANG_FRENCH_SWISS            { 0x04; }
-sub SUBLANG_GERMAN                  { 0x01; }
-sub SUBLANG_GERMAN_SWISS            { 0x02; }
-sub SUBLANG_GERMAN_AUSTRIAN         { 0x03; }
-sub SUBLANG_ITALIAN                 { 0x01; }
-sub SUBLANG_ITALIAN_SWISS           { 0x02; }
-sub SUBLANG_NORWEGIAN_BOKMAL        { 0x01; }
-sub SUBLANG_NORWEGIAN_NYNORSK       { 0x02; }
-sub SUBLANG_PORTUGUESE              { 0x02; }
-sub SUBLANG_PORTUGUESE_BRAZILIAN    { 0x01; }
-sub SUBLANG_SERBO_CROATIAN_CYRILLIC { 0x02; }
-sub SUBLANG_SERBO_CROATIAN_LATIN    { 0x01; }
-sub SUBLANG_SPANISH                 { 0x01; }
-sub SUBLANG_SPANISH_MEXICAN         { 0x02; }
-sub SUBLANG_SPANISH_MODERN          { 0x03; }
+sub SUBLANG_NEUTRAL                 { 0x00 }
+sub SUBLANG_DEFAULT                 { 0x01 }
+sub SUBLANG_SYS_DEFAULT             { 0x02 }
+sub SUBLANG_CHINESE_SIMPLIFIED      { 0x02 }
+sub SUBLANG_CHINESE_TRADITIONAL     { 0x01 }
+sub SUBLANG_DUTCH                   { 0x01 }
+sub SUBLANG_DUTCH_BELGIAN           { 0x02 }
+sub SUBLANG_ENGLISH_US              { 0x01 }
+sub SUBLANG_ENGLISH_UK              { 0x02 }
+sub SUBLANG_ENGLISH_AUS             { 0x03 }
+sub SUBLANG_ENGLISH_CAN             { 0x04 }
+sub SUBLANG_ENGLISH_NZ              { 0x05 }
+sub SUBLANG_ENGLISH_EIRE            { 0x06 }
+sub SUBLANG_FRENCH                  { 0x01 }
+sub SUBLANG_FRENCH_BELGIAN          { 0x02 }
+sub SUBLANG_FRENCH_CANADIAN         { 0x03 }
+sub SUBLANG_FRENCH_SWISS            { 0x04 }
+sub SUBLANG_GERMAN                  { 0x01 }
+sub SUBLANG_GERMAN_SWISS            { 0x02 }
+sub SUBLANG_GERMAN_AUSTRIAN         { 0x03 }
+sub SUBLANG_ITALIAN                 { 0x01 }
+sub SUBLANG_ITALIAN_SWISS           { 0x02 }
+sub SUBLANG_NORWEGIAN_BOKMAL        { 0x01 }
+sub SUBLANG_NORWEGIAN_NYNORSK       { 0x02 }
+sub SUBLANG_PORTUGUESE              { 0x02 }
+sub SUBLANG_PORTUGUESE_BRAZILIAN    { 0x01 }
+sub SUBLANG_SERBO_CROATIAN_CYRILLIC { 0x02 }
+sub SUBLANG_SERBO_CROATIAN_LATIN    { 0x01 }
+sub SUBLANG_SPANISH                 { 0x01 }
+sub SUBLANG_SPANISH_MEXICAN         { 0x02 }
+sub SUBLANG_SPANISH_MODERN          { 0x03 }
 
 # Country codes
-sub CTRY_DEFAULT                    { 0;   }
-sub CTRY_AUSTRALIA                  { 61;  }
-sub CTRY_AUSTRIA                    { 43;  }
-sub CTRY_BELGIUM                    { 32;  }
-sub CTRY_BRAZIL                     { 55;  }
-sub CTRY_CANADA                     { 2;   }
-sub CTRY_DENMARK                    { 45;  }
-sub CTRY_FINLAND                    { 358; }
-sub CTRY_FRANCE                     { 33;  }
-sub CTRY_GERMANY                    { 49;  }
-sub CTRY_ICELAND                    { 354; }
-sub CTRY_IRELAND                    { 353; }
-sub CTRY_ITALY                      { 39;  }
-sub CTRY_JAPAN                      { 81;  }
-sub CTRY_MEXICO                     { 52;  }
-sub CTRY_NETHERLANDS                { 31;  }
-sub CTRY_NEW_ZEALAND                { 64;  }
-sub CTRY_NORWAY                     { 47;  }
-sub CTRY_PORTUGAL                   { 351; }
-sub CTRY_PRCHINA                    { 86;  }
-sub CTRY_SOUTH_KOREA                { 82;  }
-sub CTRY_SPAIN                      { 34;  }
-sub CTRY_SWEDEN                     { 46;  }
-sub CTRY_SWITZERLAND                { 41;  }
-sub CTRY_TAIWAN                     { 886; }
-sub CTRY_UNITED_KINGDOM             { 44;  }
-sub CTRY_UNITED_STATES              { 1;   }
+sub CTRY_DEFAULT                    { 0   }
+sub CTRY_AUSTRALIA                  { 61  }
+sub CTRY_AUSTRIA                    { 43  }
+sub CTRY_BELGIUM                    { 32  }
+sub CTRY_BRAZIL                     { 55  }
+sub CTRY_CANADA                     { 2   }
+sub CTRY_DENMARK                    { 45  }
+sub CTRY_FINLAND                    { 358 }
+sub CTRY_FRANCE                     { 33  }
+sub CTRY_GERMANY                    { 49  }
+sub CTRY_ICELAND                    { 354 }
+sub CTRY_IRELAND                    { 353 }
+sub CTRY_ITALY                      { 39  }
+sub CTRY_JAPAN                      { 81  }
+sub CTRY_MEXICO                     { 52  }
+sub CTRY_NETHERLANDS                { 31  }
+sub CTRY_NEW_ZEALAND                { 64  }
+sub CTRY_NORWAY                     { 47  }
+sub CTRY_PORTUGAL                   { 351 }
+sub CTRY_PRCHINA                    { 86  }
+sub CTRY_SOUTH_KOREA                { 82  }
+sub CTRY_SPAIN                      { 34  }
+sub CTRY_SWEDEN                     { 46  }
+sub CTRY_SWITZERLAND                { 41  }
+sub CTRY_TAIWAN                     { 886 }
+sub CTRY_UNITED_KINGDOM             { 44  }
+sub CTRY_UNITED_STATES              { 1   }
 
 # Locale Types
-sub LOCALE_NOUSEROVERRIDE           { 0x80000000; }
-sub LOCALE_ILANGUAGE                { 0x0001; }
-sub LOCALE_SLANGUAGE                { 0x0002; }
-sub LOCALE_SENGLANGUAGE             { 0x1001; }
-sub LOCALE_SABBREVLANGNAME          { 0x0003; }
-sub LOCALE_SNATIVELANGNAME          { 0x0004; }
-sub LOCALE_ICOUNTRY                 { 0x0005; }
-sub LOCALE_SCOUNTRY                 { 0x0006; }
-sub LOCALE_SENGCOUNTRY              { 0x1002; }
-sub LOCALE_SABBREVCTRYNAME          { 0x0007; }
-sub LOCALE_SNATIVECTRYNAME          { 0x0008; }
-sub LOCALE_IDEFAULTLANGUAGE         { 0x0009; }
-sub LOCALE_IDEFAULTCOUNTRY          { 0x000A; }
-sub LOCALE_IDEFAULTCODEPAGE         { 0x000B; }
-sub LOCALE_IDEFAULTANSICODEPAGE     { 0x1004; }
-sub LOCALE_SLIST                    { 0x000C; }
-sub LOCALE_IMEASURE                 { 0x000D; }
-sub LOCALE_SDECIMAL                 { 0x000E; }
-sub LOCALE_STHOUSAND                { 0x000F; }
-sub LOCALE_SGROUPING                { 0x0010; }
-sub LOCALE_IDIGITS                  { 0x0011; }
-sub LOCALE_ILZERO                   { 0x0012; }
-sub LOCALE_INEGNUMBER               { 0x1010; }
-sub LOCALE_SNATIVEDIGITS            { 0x0013; }
-sub LOCALE_SCURRENCY                { 0x0014; }
-sub LOCALE_SINTLSYMBOL              { 0x0015; }
-sub LOCALE_SMONDECIMALSEP           { 0x0016; }
-sub LOCALE_SMONTHOUSANDSEP          { 0x0017; }
-sub LOCALE_SMONGROUPING             { 0x0018; }
-sub LOCALE_ICURRDIGITS              { 0x0019; }
-sub LOCALE_IINTLCURRDIGITS          { 0x001A; }
-sub LOCALE_ICURRENCY                { 0x001B; }
-sub LOCALE_INEGCURR                 { 0x001C; }
-sub LOCALE_SDATE                    { 0x001D; }
-sub LOCALE_STIME                    { 0x001E; }
-sub LOCALE_SSHORTDATE               { 0x001F; }
-sub LOCALE_SLONGDATE                { 0x0020; }
-sub LOCALE_STIMEFORMAT              { 0x1003; }
-sub LOCALE_IDATE                    { 0x0021; }
-sub LOCALE_ILDATE                   { 0x0022; }
-sub LOCALE_ITIME                    { 0x0023; }
-sub LOCALE_ITIMEMARKPOSN            { 0x1005; }
-sub LOCALE_ICENTURY                 { 0x0024; }
-sub LOCALE_ITLZERO                  { 0x0025; }
-sub LOCALE_IDAYLZERO                { 0x0026; }
-sub LOCALE_IMONLZERO                { 0x0027; }
-sub LOCALE_S1159                    { 0x0028; }
-sub LOCALE_S2359                    { 0x0029; }
-sub LOCALE_ICALENDARTYPE            { 0x1009; }
-sub LOCALE_IOPTIONALCALENDAR        { 0x100B; }
-sub LOCALE_IFIRSTDAYOFWEEK          { 0x100C; }
-sub LOCALE_IFIRSTWEEKOFYEAR         { 0x100D; }
-sub LOCALE_SDAYNAME1                { 0x002A; }
-sub LOCALE_SDAYNAME2                { 0x002B; }
-sub LOCALE_SDAYNAME3                { 0x002C; }
-sub LOCALE_SDAYNAME4                { 0x002D; }
-sub LOCALE_SDAYNAME5                { 0x002E; }
-sub LOCALE_SDAYNAME6                { 0x002F; }
-sub LOCALE_SDAYNAME7                { 0x0030; }
-sub LOCALE_SABBREVDAYNAME1          { 0x0031; }
-sub LOCALE_SABBREVDAYNAME2          { 0x0032; }
-sub LOCALE_SABBREVDAYNAME3          { 0x0033; }
-sub LOCALE_SABBREVDAYNAME4          { 0x0034; }
-sub LOCALE_SABBREVDAYNAME5          { 0x0035; }
-sub LOCALE_SABBREVDAYNAME6          { 0x0036; }
-sub LOCALE_SABBREVDAYNAME7          { 0x0037; }
-sub LOCALE_SMONTHNAME1              { 0x0038; }
-sub LOCALE_SMONTHNAME2              { 0x0039; }
-sub LOCALE_SMONTHNAME3              { 0x003A; }
-sub LOCALE_SMONTHNAME4              { 0x003B; }
-sub LOCALE_SMONTHNAME5              { 0x003C; }
-sub LOCALE_SMONTHNAME6              { 0x003D; }
-sub LOCALE_SMONTHNAME7              { 0x003E; }
-sub LOCALE_SMONTHNAME8              { 0x003F; }
-sub LOCALE_SMONTHNAME9              { 0x0040; }
-sub LOCALE_SMONTHNAME10             { 0x0041; }
-sub LOCALE_SMONTHNAME11             { 0x0042; }
-sub LOCALE_SMONTHNAME12             { 0x0043; }
-sub LOCALE_SMONTHNAME13             { 0x100E; }
-sub LOCALE_SABBREVMONTHNAME1        { 0x0044; }
-sub LOCALE_SABBREVMONTHNAME2        { 0x0045; }
-sub LOCALE_SABBREVMONTHNAME3        { 0x0046; }
-sub LOCALE_SABBREVMONTHNAME4        { 0x0047; }
-sub LOCALE_SABBREVMONTHNAME5        { 0x0048; }
-sub LOCALE_SABBREVMONTHNAME6        { 0x0049; }
-sub LOCALE_SABBREVMONTHNAME7        { 0x004A; }
-sub LOCALE_SABBREVMONTHNAME8        { 0x004B; }
-sub LOCALE_SABBREVMONTHNAME9        { 0x004C; }
-sub LOCALE_SABBREVMONTHNAME10       { 0x004D; }
-sub LOCALE_SABBREVMONTHNAME11       { 0x004E; }
-sub LOCALE_SABBREVMONTHNAME12       { 0x004F; }
-sub LOCALE_SABBREVMONTHNAME13       { 0x100F; }
-sub LOCALE_SPOSITIVESIGN            { 0x0050; }
-sub LOCALE_SNEGATIVESIGN            { 0x0051; }
-sub LOCALE_IPOSSIGNPOSN             { 0x0052; }
-sub LOCALE_INEGSIGNPOSN             { 0x0053; }
-sub LOCALE_IPOSSYMPRECEDES          { 0x0054; }
-sub LOCALE_IPOSSEPBYSPACE           { 0x0055; }
-sub LOCALE_INEGSYMPRECEDES          { 0x0056; }
-sub LOCALE_INEGSEPBYSPACE           { 0x0057; }
+sub LOCALE_NOUSEROVERRIDE           { 0x80000000 }
+sub LOCALE_ILANGUAGE                { 0x0001 }
+sub LOCALE_SLANGUAGE                { 0x0002 }
+sub LOCALE_SENGLANGUAGE             { 0x1001 }
+sub LOCALE_SABBREVLANGNAME          { 0x0003 }
+sub LOCALE_SNATIVELANGNAME          { 0x0004 }
+sub LOCALE_ICOUNTRY                 { 0x0005 }
+sub LOCALE_SCOUNTRY                 { 0x0006 }
+sub LOCALE_SENGCOUNTRY              { 0x1002 }
+sub LOCALE_SABBREVCTRYNAME          { 0x0007 }
+sub LOCALE_SNATIVECTRYNAME          { 0x0008 }
+sub LOCALE_IDEFAULTLANGUAGE         { 0x0009 }
+sub LOCALE_IDEFAULTCOUNTRY          { 0x000A }
+sub LOCALE_IDEFAULTCODEPAGE         { 0x000B }
+sub LOCALE_IDEFAULTANSICODEPAGE     { 0x1004 }
+sub LOCALE_SLIST                    { 0x000C }
+sub LOCALE_IMEASURE                 { 0x000D }
+sub LOCALE_SDECIMAL                 { 0x000E }
+sub LOCALE_STHOUSAND                { 0x000F }
+sub LOCALE_SGROUPING                { 0x0010 }
+sub LOCALE_IDIGITS                  { 0x0011 }
+sub LOCALE_ILZERO                   { 0x0012 }
+sub LOCALE_INEGNUMBER               { 0x1010 }
+sub LOCALE_SNATIVEDIGITS            { 0x0013 }
+sub LOCALE_SCURRENCY                { 0x0014 }
+sub LOCALE_SINTLSYMBOL              { 0x0015 }
+sub LOCALE_SMONDECIMALSEP           { 0x0016 }
+sub LOCALE_SMONTHOUSANDSEP          { 0x0017 }
+sub LOCALE_SMONGROUPING             { 0x0018 }
+sub LOCALE_ICURRDIGITS              { 0x0019 }
+sub LOCALE_IINTLCURRDIGITS          { 0x001A }
+sub LOCALE_ICURRENCY                { 0x001B }
+sub LOCALE_INEGCURR                 { 0x001C }
+sub LOCALE_SDATE                    { 0x001D }
+sub LOCALE_STIME                    { 0x001E }
+sub LOCALE_SSHORTDATE               { 0x001F }
+sub LOCALE_SLONGDATE                { 0x0020 }
+sub LOCALE_STIMEFORMAT              { 0x1003 }
+sub LOCALE_IDATE                    { 0x0021 }
+sub LOCALE_ILDATE                   { 0x0022 }
+sub LOCALE_ITIME                    { 0x0023 }
+sub LOCALE_ITIMEMARKPOSN            { 0x1005 }
+sub LOCALE_ICENTURY                 { 0x0024 }
+sub LOCALE_ITLZERO                  { 0x0025 }
+sub LOCALE_IDAYLZERO                { 0x0026 }
+sub LOCALE_IMONLZERO                { 0x0027 }
+sub LOCALE_S1159                    { 0x0028 }
+sub LOCALE_S2359                    { 0x0029 }
+sub LOCALE_ICALENDARTYPE            { 0x1009 }
+sub LOCALE_IOPTIONALCALENDAR        { 0x100B }
+sub LOCALE_IFIRSTDAYOFWEEK          { 0x100C }
+sub LOCALE_IFIRSTWEEKOFYEAR         { 0x100D }
+sub LOCALE_SDAYNAME1                { 0x002A }
+sub LOCALE_SDAYNAME2                { 0x002B }
+sub LOCALE_SDAYNAME3                { 0x002C }
+sub LOCALE_SDAYNAME4                { 0x002D }
+sub LOCALE_SDAYNAME5                { 0x002E }
+sub LOCALE_SDAYNAME6                { 0x002F }
+sub LOCALE_SDAYNAME7                { 0x0030 }
+sub LOCALE_SABBREVDAYNAME1          { 0x0031 }
+sub LOCALE_SABBREVDAYNAME2          { 0x0032 }
+sub LOCALE_SABBREVDAYNAME3          { 0x0033 }
+sub LOCALE_SABBREVDAYNAME4          { 0x0034 }
+sub LOCALE_SABBREVDAYNAME5          { 0x0035 }
+sub LOCALE_SABBREVDAYNAME6          { 0x0036 }
+sub LOCALE_SABBREVDAYNAME7          { 0x0037 }
+sub LOCALE_SMONTHNAME1              { 0x0038 }
+sub LOCALE_SMONTHNAME2              { 0x0039 }
+sub LOCALE_SMONTHNAME3              { 0x003A }
+sub LOCALE_SMONTHNAME4              { 0x003B }
+sub LOCALE_SMONTHNAME5              { 0x003C }
+sub LOCALE_SMONTHNAME6              { 0x003D }
+sub LOCALE_SMONTHNAME7              { 0x003E }
+sub LOCALE_SMONTHNAME8              { 0x003F }
+sub LOCALE_SMONTHNAME9              { 0x0040 }
+sub LOCALE_SMONTHNAME10             { 0x0041 }
+sub LOCALE_SMONTHNAME11             { 0x0042 }
+sub LOCALE_SMONTHNAME12             { 0x0043 }
+sub LOCALE_SMONTHNAME13             { 0x100E }
+sub LOCALE_SABBREVMONTHNAME1        { 0x0044 }
+sub LOCALE_SABBREVMONTHNAME2        { 0x0045 }
+sub LOCALE_SABBREVMONTHNAME3        { 0x0046 }
+sub LOCALE_SABBREVMONTHNAME4        { 0x0047 }
+sub LOCALE_SABBREVMONTHNAME5        { 0x0048 }
+sub LOCALE_SABBREVMONTHNAME6        { 0x0049 }
+sub LOCALE_SABBREVMONTHNAME7        { 0x004A }
+sub LOCALE_SABBREVMONTHNAME8        { 0x004B }
+sub LOCALE_SABBREVMONTHNAME9        { 0x004C }
+sub LOCALE_SABBREVMONTHNAME10       { 0x004D }
+sub LOCALE_SABBREVMONTHNAME11       { 0x004E }
+sub LOCALE_SABBREVMONTHNAME12       { 0x004F }
+sub LOCALE_SABBREVMONTHNAME13       { 0x100F }
+sub LOCALE_SPOSITIVESIGN            { 0x0050 }
+sub LOCALE_SNEGATIVESIGN            { 0x0051 }
+sub LOCALE_IPOSSIGNPOSN             { 0x0052 }
+sub LOCALE_INEGSIGNPOSN             { 0x0053 }
+sub LOCALE_IPOSSYMPRECEDES          { 0x0054 }
+sub LOCALE_IPOSSEPBYSPACE           { 0x0055 }
+sub LOCALE_INEGSYMPRECEDES          { 0x0056 }
+sub LOCALE_INEGSEPBYSPACE           { 0x0057 }
+
+# GetTimeFormat Flags
+sub TIME_NOMINUTESORSECONDS         { 0x0001 }
+sub TIME_NOSECONDS                  { 0x0002 }
+sub TIME_NOTIMEMARKER               { 0x0004 }
+sub TIME_FORCE24HOURFORMAT          { 0x0008 }
+
+# GetDateFormat Flags
+sub DATE_SHORTDATE		    { 0x0001 }
+sub DATE_LONGDATE                   { 0x0002 }
+sub DATE_USE_ALT_CALENDAR           { 0x0004 }
+sub DATE_YEARMONTH                  { 0x0008 }
+sub DATE_LTRREADING                 { 0x0010 }
+sub DATE_RTLREADING                 { 0x0020 }
 
 # Language Identifier Functions
 sub MAKELANGID	   { my ($p,$s) = @_; (($s & 0xffff) << 10) | ($p & 0xffff); }
@@ -431,7 +451,7 @@ Possible return values are:
 	2	STR1 is equal to STR2
 	3	STR1 is greater than STR2
 
-Note that you can subtract 2 from the return code to get values 
+Note that you can subtract 2 from the return code to get values
 comparable to the C<cmp> operator.
 
 =item LCMapString(LCID,FLAGS,STR)
@@ -538,6 +558,36 @@ Returns the user default language identifier.
 =item GetUserDefaultLCID()
 
 Returns the user default locale identifier.
+
+=item SendSettingChange()
+
+Sends a WM_SETTINGCHANGE message to all top level windows.
+
+=item SetLocaleInfo(LCID, LCTYPE, LCDATA)
+
+Changes an item in the user override part of the locale setting LCID.
+It doesn't change the system default database. The following LCTYPEs are
+changeable:
+
+	LOCALE_ICALENDARTYPE	LOCALE_SDATE
+	LOCALE_ICURRDIGITS	LOCALE_SDECIMAL
+	LOCALE_ICURRENCY	LOCALE_SGROUPING
+	LOCALE_IDIGITS		LOCALE_SLIST
+	LOCALE_IFIRSTDAYOFWEEK	LOCALE_SLONGDATE
+	LOCALE_IFIRSTWEEKOFYEAR	LOCALE_SMONDECIMALSEP
+	LOCALE_ILZERO		LOCALE_SMONGROUPING
+	LOCALE_IMEASURE		LOCALE_SMONTHOUSANDSEP
+	LOCALE_INEGCURR		LOCALE_SNEGATIVESIGN
+	LOCALE_INEGNUMBER	LOCALE_SPOSITIVESIGN
+	LOCALE_IPAPERSIZE	LOCALE_SSHORTDATE
+	LOCALE_ITIME		LOCALE_STHOUSAND
+	LOCALE_S1159		LOCALE_STIME
+	LOCALE_S2359		LOCALE_STIMEFORMAT
+	LOCALE_SCURRENCY	LOCALE_SYEARMONTH
+
+You have to call SendSettingChange() to activate these changes for
+subsequent Win32::OLE::Variant object formatting because the OLE
+subsystem seems to cache locale information.
 
 =item MAKELANGID(LANG,SUBLANG)
 
@@ -668,7 +718,7 @@ The ten characters that are the native equivalent of the ASCII 0-9.
 
 =item LOCALE_INEGNUMBER
 
-Negative number mode. 
+Negative number mode.
 
 	0 	(1.1)
 	1 	-1.1
@@ -712,7 +762,7 @@ Number of fractional digits for the international monetary format.
 
 =item LOCALE_ICURRENCY
 
-Positive currency mode. 
+Positive currency mode.
 
 	0	Prefix, no separation.
 	1	Suffix, no separation.
@@ -721,7 +771,7 @@ Positive currency mode.
 
 =item LOCALE_INEGCURR
 
-Negative currency mode. 
+Negative currency mode.
 
 	0	($1.1)
 	1	-$1.1
@@ -737,7 +787,7 @@ Negative currency mode.
 
 =item LOCALE_ICALENDARTYPE
 
-The type of calendar currently in use. 
+The type of calendar currently in use.
 
 	1	Gregorian (as in U.S.)
 	2	Gregorian (always English strings)

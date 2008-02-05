@@ -162,6 +162,88 @@ specified as arguments:
 
 C<$Int> is now a VT_I4 Variant object containing the value of element (1,2).
 
+=item Currency([FORMAT[, LCID]])
+
+This method converts the VARIANT value into a formatted curency string. The
+FORMAT can be either an integer constant or a hash reference. Valid constants
+are 0 and LOCALE_NOUSEROVERRIDE. You get the value of LOCALE_NOUSEROVERRIDE
+from the Win32::OLE::NLS module:
+
+	use Win32::OLE::NLS qw(:LOCALE);
+
+LOCALE_NOUSEROVERRIDE tells the method to use the system default currency
+format for the specified locale, disregarding any changes that might have
+been made through the control panel application.
+
+The hash reference could contain the following keys:
+
+	NumDigits	number of fractional digits
+	LeadingZero	whether to use leading zeroes in decimal fields
+	Grouping	size of each group of digits to the left of the decimal
+	DecimalSep	decimal separator string
+	ThousandSep	thousand separator string
+	NegativeOrder	see L<Win32::OLE::NLS/LOCALE_ICURRENCY>
+	PositiveOrder	see L<Win32::OLE::NLS/LOCALE_INEGCURR>
+	CurrencySymbol	currency symbol string
+
+For example:
+
+	use Win32::OLE::Variant;
+	use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG :DATE :TIME);
+	my $lcidGerman = MAKELCID(MAKELANGID(LANG_GERMAN, SUBLANG_NEUTRAL));
+	my $v = Variant(VT_CY, "-922337203685477.5808");
+	print $v->Currency({CurrencySymbol => "Tuits"}, $lcidGerman), "\n";
+
+will print:
+
+	-922.337.203.685.477,58 Tuits
+
+=item Date([FORMAT[, LCID]])
+
+Converts the VARIANT into a formatted date string. FORMAT can be either
+one of the following integer constants or a format string:
+
+	LOCALE_NOUSEROVERRIDE	system default date format for this locale
+	DATE_SHORTDATE		use the short date format (default)
+	DATE_LONGDATE		use the long date format
+	DATE_YEARMONTH		use the year/month format
+	DATE_USE_ALT_CALENDAR	use the alternate calendar, if one exists
+	DATE_LTRREADING		left-to-right reading order layout
+	DATE_RTLREADING		right-to left reading order layout
+
+The constants are available from the Win32::OLE::NLS module:
+
+	use Win32::OLE::NLS qw(:LOCALE :DATE);
+
+The following elements can be used to construct a date format string.
+Characters must be specified exactly as given below (e.g. "dd" B<not> "DD").
+Spaces can be inserted anywhere between formating codes, other verbatim
+text should be included in single quotes.
+
+	d	day of month
+	dd	day of month with leading zero for single-digit days
+	ddd	day of week: three-letter abbreviation (LOCALE_SABBREVDAYNAME)
+	dddd	day of week: full name (LOCALE_SDAYNAME)
+	M	month
+	MM	month with leading zero for single-digit months
+	MMM	month: three-letter abbreviation (LOCALE_SABBREVMONTHNAME)
+	MMMM	month: full name (LOCALE_SMONTHNAME)
+	y	year as last two digits
+	yy	year as last two digits with leading zero for years less than 10
+	yyyy	year represented by full four digits
+	gg	period/era string
+
+For example:
+
+	my $v = Variant(VT_DATE, "April 1 99");
+	print $v->Date(DATE_LONGDATE), "\n";
+	print $v->Date("ddd',' MMM dd yy"), "\n";
+
+will print:
+
+	Thursday, April 01, 1999
+	Thu, Apr 01 99
+
 =item Dim()
 
 Returns a list of array bounds for a VT_ARRAY variant. The list contains
@@ -184,12 +266,34 @@ array element. In this case C<DIM> must be a list of array indices. E.g.
 As a special case for one dimensional VT_UI1|VT_ARRAY variants the C<Get>
 method without arguments returns the character array as a Perl string.
 
-	print $Var->Get, "\n";
+	print $String->Get, "\n";
 
 =item LastError()
 
 The use of the C<Win32::OLE::Variant->LastError()> method is deprecated.
 Please use the C<Win32::OLE->LastError()> class method instead.
+
+=item Number([FORMAT[, LCID]])
+
+This method converts the VARIANT value into a formatted number string. The
+FORMAT can be either an integer constant or a hash reference. Valid constants
+are 0 and LOCALE_NOUSEROVERRIDE. You get the value of LOCALE_NOUSEROVERRIDE
+from the Win32::OLE::NLS module:
+
+	use Win32::OLE::NLS qw(:LOCALE);
+
+LOCALE_NOUSEROVERRIDE tells the method to use the system default number
+format for the specified locale, disregarding any changes that might have
+been made through the control panel application.
+
+The hash reference could contain the following keys:
+
+	NumDigits	number of fractional digits
+	LeadingZero	whether to use leading zeroes in decimal fields
+	Grouping	size of each group of digits to the left of the decimal
+	DecimalSep	decimal separator string
+	ThousandSep	thousand separator string
+	NegativeOrder	see L<Win32::OLE::NLS/LOCALE_INEGNUMBER>
 
 =item Put(DIM, VALUE)
 
@@ -205,6 +309,15 @@ For VT_ARRAY type variants the indices for each dimension of the contained
 SAFEARRAY must be specified in front of the new value:
 
 	$Array->Put(1, 1, 2.7);
+
+It is also possible to assign values to *every* element of the SAFEARRAY at
+once using a single Put() method call:
+
+	$Array->Put([[1,2], [3,4]]);
+
+In this case the argument to Put() must be an array reference and the
+dimensions of the Perl list-of-lists must match the dimensions of the
+SAFEARRAY exactly.
 
 The are a few special cases for one-dimensional VT_UI1 arrays: The VALUE
 can be specified as a string instead of a number. This will set the selected
@@ -225,9 +338,58 @@ with '\0's if the string is shorter:
 
 Now C<$String> contains the value "Strin".
 
+C<Put> returns the Variant object itself so that multiple C<Put> calls can be
+chained together:
+
+	$Array->Put(0,0,$First_value)->Put(0,1,$Another_value);
+
+=item Time([FORMAT[, LCID]])
+
+Converts the VARIANT into a formatted time string. FORMAT can be either
+one of the following integer constants or a format string:
+
+	LOCALE_NOUSEROVERRIDE	system default time format for this locale
+	TIME_NOMINUTESORSECONDS	don't use minutes or seconds
+	TIME_NOSECONDS		don't use seconds
+	TIME_NOTIMEMARKER	don't use a time marker
+	TIME_FORCE24HOURFORMAT	always use a 24-hour time format
+
+The constants are available from the Win32::OLE::NLS module:
+
+	use Win32::OLE::NLS qw(:LOCALE :TIME);
+
+The following elements can be used to construct a time format string.
+Characters must be specified exactly as given below (e.g. "dd" B<not> "DD").
+Spaces can be inserted anywhere between formating codes, other verbatim
+text should be included in single quotes.
+
+	h	hours; 12-hour clock
+	hh	hours with leading zero for single-digit hours; 12-hour clock
+	H	hours; 24-hour clock
+	HH	hours with leading zero for single-digit hours; 24-hour clock
+	m	minutes
+	mm	minutes with leading zero for single-digit minutes
+	s	seconds
+	ss	seconds with leading zero for single-digit seconds
+	t	one character time marker string, such as A or P
+	tt	multicharacter time marker string, such as AM or PM
+
+For example:
+
+	my $v = Variant(VT_DATE, "April 1 99 2:23 pm");
+	print $v->Time, "\n";
+	print $v->Time(TIME_FORCE24HOURFORMAT|TIME_NOTIMEMARKER), "\n";
+	print $v->Time("hh.mm.ss tt"), "\n";
+
+will print:
+
+	2:23:00 PM
+	14:23:00
+	02.23.00 PM
+
 =item Type()
 
-The C<Type> method returns the type of the contained VARIANT.
+The C<Type> method returns the variant type of the contained VARIANT.
 
 =item Unicode()
 

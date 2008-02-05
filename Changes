@@ -1,11 +1,34 @@
 Revision history for Perl extension Win32::OLE.
 
+Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
+are by Jan Dubois unless attributed otherwise.
+
+0.1007	Sun, April 25th, 1999
+	- patches from ActiveState for sample code in OLE.pm POD section
+	- Win32::OLE::Const now correctly treats version numbers as hex
+	- use SvPV_nolen() where appropriate
+	- Win32::OLE::NLS methods: SetLocaleInfo, SendSettingChange
+	- Win32::OLE::Variant::Put returns $self for chaining
+	- Win32::OLE::Variant::Put(ARRAYREF) implemented
+	- Win32::OLE->WithEvents() function
+	- new Win32::OLE::Variant methods: Currency/Date/Number/Time
+	- AssignVariantFromSV() fixes for locale related VT_DATE/VT_CY problems
+	- Win32::OLE::Variant::Get/Put fixed for VARIANT|BYREF pointing to ARRAY
+	- several robustness enhancements to compensate for Perl's indeterminate
+	  sequence of global object destruction
+	- Win32::OLE->EnumAllObjects() function
+	- t/6_event.t tests for WithEvents functionality
+	- DCOM support in Win32::OLE->new() finally documented
+	- GetObject and GetActiveObject now support optional DESTROY argument
+	- OVERLOAD now works in DESTRUCTOR callback too
+	- new file NEWS.pod describes user visible changes
+
 0.1006	(unreleased)
-	- replace XSRETURN_UNDEF by XSRETURN_EMPTY
+	- replace many XSRETURN_UNDEFs by XSRETURN_EMPTY
 	- various TypeInfo/TypeLib changes; Win32::OLE::GetTypeInfo() added
 	- trial implementation of Win32::OLE::QueryInterface
 
-0.1005	(unreleased, in PRK update?)
+0.1005	PRK update, ActivePerl 509
 	- rearrange PL_* definitions for 5.004_05 compatibility
 	- dependency on Win32::Registry removed. Win32::OLE::Const now uses XS
 	  code to search the registry. Now only needs read access to registry.
@@ -48,7 +71,7 @@ Revision history for Perl extension Win32::OLE.
 	- Some functions exported for use by embedders (PerlSE, PerlCOM)
 	- PPD entries added into Makefile.PL
 
-0.10	Thu Sep 10 17:32:16 1998
+0.10	Thu Sep 10 17:32:16 1998 (libwin32-0.14)
 	- memory corruption fix (for ->SetProperty method) by Gurusamy Sarathy
 	- document *nitialize(), SpinMessageLoop()
 
@@ -230,12 +253,10 @@ Revision history for Perl extension Win32::OLE.
 	- Enum::new returns undef if object is not a valid collection object
 
 0.06  Fri Feb  6 21:13:20 1998
-	All changes in this release courtesy Jan Dubois <jan.dubois@ibm.net>
 	- bugfix: DoCroak uninitialized variable
 	- Multidimensional arrays can now be sent and received
 
 0.05  Sun Dec 14 21:13:11 1997
-	All changes in this release courtesy Jan Dubois <jan.dubois@ibm.net>
 	- All OLE errors are caught and a verbose error message is provided
 	  through Carp::croak (if -w is in effect)
 	- Internal errors will no longer be silently ignored; they'll croak now
@@ -252,17 +273,16 @@ Revision history for Perl extension Win32::OLE.
 0.04  Sun Oct 12 23:03:32 1997 (unreleased)
 	- support for unnamed default methods (thanks to
 	  Doug Lankshear <Doug_Lankshear@ActiveState.com>)
-	- Following changes courtesy Jan Dubois <jan.dubois@ibm.net>:
-	    * CreateVariantFromSV is more robust now
-	    * support for omitting optional params with "undef"
-	    * named arguments can be specified as a hash ref
-	    * array elements are now properly typed (used to be always text)
-	    * additions to testsuite
-	    * With() utility method suggestion
-	    * optional DESTROY method arg for Win32::OLE->new
-	    * Win32::OLE::CreateObject renamed to Win32::OLE::new
-	      old Perl new() method deleted
-	    * Hardcoded package names gone, so inheritance is feasible now
+	- CreateVariantFromSV is more robust now
+	- support for omitting optional params with "undef"
+	- named arguments can be specified as a hash ref
+	- array elements are now properly typed (used to be always text)
+	- additions to testsuite
+	- With() utility method suggestion
+	- optional DESTROY method arg for Win32::OLE->new
+	- Win32::OLE::CreateObject renamed to Win32::OLE::new
+	  old Perl new() method deleted
+	- Hardcoded package names gone, so inheritance is feasible now
 
 0.03  Sat Jul 12 16:10:07 1997
 	- DllEntryPoint for Borland
@@ -278,4 +298,3 @@ Revision history for Perl extension Win32::OLE.
 0.01  Sat Apr  5 14:23:42 1997
 	- original version; created by h2xs 1.18
 	- imported Activeware version
-

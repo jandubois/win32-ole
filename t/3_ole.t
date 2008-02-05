@@ -13,7 +13,7 @@ use Win32::OLE;
 use strict qw(vars);
 use vars qw($AUTOLOAD @ISA $Warn $LastError $CP $LCID);
 # use BEGIN because the class is already used in BEGIN block later
-BEGIN { @ISA = qw(Win32::OLE); } 
+BEGIN { @ISA = qw(Win32::OLE); }
 
 $CP   = Win32::OLE->Option('CP');
 $LCID = Win32::OLE->Option('LCID');
@@ -298,6 +298,7 @@ foreach my $Sheet (@Sheets) {
 }
 print "not " unless $Sheets->{Count} == @Sheets;
 printf "ok %d\n", ++$Test;
+undef @Sheets;
 
 # 30. Enumerate all application properties using the C<keys> function
 my @Properties = keys %$Excel;
@@ -306,6 +307,7 @@ $Value = grep /^(Parent|Xyzzy|Name)$/, @Properties;
 print "# Value is \"$Value\"\n";
 print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
+undef @Properties;
 
 # 31. Translate character from ANSI -> OEM
 my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
@@ -360,17 +362,25 @@ printf "ok %d\n", ++$Test;
 # 36. Use clsid string to start OLE server
 undef $Value;
 eval {
-    use Win32::Registry;
+    require Win32::Registry;
     use vars qw($HKEY_CLASSES_ROOT);
     my ($HKey,$CLSID);
     $HKEY_CLASSES_ROOT->Create('Excel.Application\CLSID',$HKey);
     $HKey->QueryValue('', $CLSID);
+    $HKey->Close;
     $Obj = Win32::OLE->new($CLSID);
     $Value = (Win32::OLE->QueryObjectType($Obj))[0];
+    $Obj->Quit if $Value eq 'Excel';
 };
-print "# Object application is $Value\n";
-print "not " unless $Value eq 'Excel';
-printf "ok %d\n", ++$Test;
+++$Test;
+if ($@) {
+    printf "ok %d # Skipped: Registry problem $@\n", $Test;
+}
+else {
+    print "# Object application is $Value\n";
+    print "not " unless $Value eq 'Excel';
+    printf "ok %d\n", $Test;
+}
 
 # 37. Use DCOM syntax to start server (on local machine though)
 #     This might fail (on Win95/NT3.5 if DCOM support is not installed.
@@ -380,5 +390,17 @@ print "# Object application is $Value\n";
 print "not " unless $Value eq 'Excel';
 printf "ok %d\n", ++$Test;
 
-# 38. Terminate server instance ("ok $Test\n" printed by Excel destructor)
+# 38. Find $Excel object via EnumAllObjects()
+my $Found = 0;
+$Count = Win32::OLE->EnumAllObjects(sub {
+    my $Object = shift;
+    my $Class = Win32::OLE->QueryObjectType($Object);
+    printf "# Object=%s Class=%s\n", overload::StrVal($Object), $Class;
+    $Found = 1 if overload::StrVal($Object) eq overload::StrVal($Excel);
+});
+print "# Count=$Count Found=$Found\n";
+print "not " unless $Found;
+printf "ok %d\n", ++$Test;
+
+# 39. Terminate server instance ("ok $Test\n" printed by Excel destructor)
 exit;
