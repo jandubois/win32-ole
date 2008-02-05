@@ -10,6 +10,7 @@ OLE.pm
 OLE.xs
 README
 ToDo
+TypeInfo.pm             Win32::OLE::TypeInfo module
 Variant.pm		Win32::OLE::Variant module: VARIANT variables
 eg/constants.pl		Sample script prints all Excel defined constants
 eg/properties.pl	Sample script prints all Excel application properties

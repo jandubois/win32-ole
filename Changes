@@ -1,6 +1,11 @@
 Revision history for Perl extension Win32::OLE.
 
-0.1005	(unreleased)
+0.1006	(unreleased)
+	- replace XSRETURN_UNDEF by XSRETURN_EMPTY
+	- various TypeInfo/TypeLib changes; Win32::OLE::GetTypeInfo() added
+	- trial implementation of Win32::OLE::QueryInterface
+
+0.1005	(unreleased, in PRK update?)
 	- rearrange PL_* definitions for 5.004_05 compatibility
 	- dependency on Win32::Registry removed. Win32::OLE::Const now uses XS
 	  code to search the registry. Now only needs read access to registry.
@@ -9,6 +14,7 @@ Revision history for Perl extension Win32::OLE.
 	  also support an optional destructor as a 2nd argument.
 	- Export SetSVFromVariantEx from DLL too. Change SetSVFromVariant() to
 	  call SetSVFromVariantEx(..., bByRefObj=FALSE) instead of TRUE.
+	- removed Typeinfo.pm from Makefile.PL/MANIFEST before sending to AS.
 
 0.1004	(unreleased)
 	- SetVariantFromSV calls VariantClear instead of VariantInit

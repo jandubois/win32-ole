@@ -22,6 +22,7 @@ unless (defined &Dispatch) {
     &$xs('Win32::OLE');
 }
 
+$Strict = ($^H & 0x200) != 0; # strict 'subs' in effect?
 $Warn = 1;
 
 sub CP_ACP   {0;}     # ANSI codepage
@@ -80,17 +81,19 @@ sub Option {
 
     if (@_ == 1) {
 	my $Option = shift;
-	$Option eq "CP"   && return $CP;
-	$Option eq "LCID" && return $LCID;
-	$Option eq "Warn" && return $Warn;
+	$Option eq "CP"     && return $CP;
+	$Option eq "LCID"   && return $LCID;
+	$Option eq "Strict" && return $Strict; # Intentionally undocumented!
+	$Option eq "Warn"   && return $Warn;
 	_croak("Invalid Win32::OLE option: $Option");
     }
 
     while (@_) {
 	my ($Option,$Value) = splice @_, 0, 2;
-	if    ($Option eq "CP")   { $CP = $Value; }
-	elsif ($Option eq "LCID") { $LCID = $Value; }
-	elsif ($Option eq "Warn") { $Warn = $Value; }
+	if    ($Option eq "CP")     { $CP = $Value; }
+	elsif ($Option eq "LCID")   { $LCID = $Value; }
+	elsif ($Option eq "Strict") { $Strict = $Value; }
+	elsif ($Option eq "Warn")   { $Warn = $Value; }
 	else {
 	    _croak("Invalid Win32::OLE option: $Option");
 	}
@@ -131,7 +134,7 @@ sub AUTOLOAD {
     _croak("Cannot autoload class method \"$AUTOLOAD\"") 
       unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
     my $success = $self->Dispatch($AUTOLOAD, $retval, @_);
-    unless (defined $success || ($^H & 0x200)) {
+    unless (defined $success || $Strict) {
 	# Retry default method if C<no strict 'subs';>
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
     }
@@ -186,15 +189,14 @@ sub with {
 package Win32::OLE::Tie;
 
 # Only retry default method under C<no strict 'subs';>
-
 sub FETCH {
     my ($self,$key) = @_;
-    $self->Fetch($key, !($^H & 0x200));
+    $self->Fetch($key, !$Win32::OLE::Strict);
 }
 
 sub STORE {
     my ($self,$key,$value) = @_;
-    $self->Store($key, $value, !($^H & 0x200));
+    $self->Store($key, $value, !$Win32::OLE::Strict);
 }
 
 1;

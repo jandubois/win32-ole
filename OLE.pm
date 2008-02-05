@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1005';
+$VERSION = '0.1006';
 
 use Carp;
 use Exporter;
@@ -671,6 +671,6 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.1005	  15 November 1998
+Version 0.1006	  13 December 1998
 
 =cut
