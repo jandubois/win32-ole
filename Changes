@@ -1,5 +1,14 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0606
+	- use SvTRUE instead of SvIV to convert SV to VARIANT
+	- REFCNT of returned SV for VT_ARRAY variant is now set correctly
+	- SAFEARRAYs of VT_DISPATCH and VT_BSTR (and VT_VARIANT containing
+	  those) are now handled correctly
+	- folding of SAFEARRAYs removed again. Original structure is maintained
+	  t/3_ole.t adjusted accordingly
+	- Win32::OLE::Enum->All doesn't call Reset anymore
+
 0.0605
 	- Property enumeration now dereferences TKIND_COCLASS etc.
 	- Overloading in Win32::OLE now only enabled by OVERLOAD pseudotarget
@@ -44,7 +53,6 @@ Revision history for Perl extension Win32::OLE.
 	- Compatibility package "OLE" created
 	- Invoke method added, supports default method too
 	- Memory leaks
-
 	- "keys %$object", QueryObjectType and Win32::OLE::Const::Load no
 	  longer croak when the GetTypeInfo is unavailable or returns 0
 	- Enum::new returns undef if object is not a valid collection object

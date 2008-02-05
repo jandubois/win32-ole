@@ -201,22 +201,19 @@ printf "ok %d\n", ++$Test;
 # 17. Retrieve a 1 dimensional row range; check array data structure
 $Value = $Sheet->Range("B8:C8")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
-print "not " unless @$Value == 2 && ref $Value && 
-  !ref $$Value[0] && !ref $$Value[1];
+print "not " unless @$Value == 1 && ref $$Value[0];
 printf "ok %d\n", ++$Test;
 
 # 18. Retrieve a 1 dimensional column range; check array data structure
 $Value = $Sheet->Range("B8:B9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
-print "not " unless @$Value == 2 && ref $Value && 
-  ref $$Value[0] && ref $$Value[1];
+print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
 # 19. Retrieve a 2 dimensional range; check array data structure
 $Value = $Sheet->Range("B8:C9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
-print "not " unless @$Value == 2 && ref $Value && 
-  ref $$Value[0] && ref $$Value[1];
+print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
 # 20. Check contents of 2 dimensional array

@@ -1,21 +1,17 @@
 # The documentation is at the __END__
 
 package Win32::OLE::Enum;
-
 use strict;
-use Carp;
 require Win32::OLE; # Make sure the XS bootstrap has been called
-
-# Note: Calls to $self->Reset() have been wrapped in eval blocks because
-# the Reset() method seems to be unimplemented in Excel 7 (Office 95).
 
 # pure XS methods:
 # - new
+# - DESTROY
+#
 # - Clone
 # - Next
 # - Reset
 # - Skip
-# - DESTROY
 
 sub All {
     my $self = shift;
@@ -24,7 +20,6 @@ sub All {
     $self = $self->new(shift) unless ref $self;
     return unless defined $self;
 
-    eval { $self->Reset; };
     my @result;
     while (defined(my $next = $self->Next)) {
         push @result, $next;

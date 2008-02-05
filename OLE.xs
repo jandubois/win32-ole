@@ -16,7 +16,7 @@
  * - Package Win32::OLE           Constructor and method invokation
  * - Package Win32::OLE::Tie      Implements properties as tied hash
  * - Package Win32::OLE::Const    Load application constants from type library
- * - Package Win32::OLE::Enum     OLE collection enumeratation
+ * - Package Win32::OLE::Enum     OLE collection enumeration
  * - Package Win32::OLE::Variant  Implements Perl VARIANT objects
  *
  */
@@ -38,9 +38,7 @@ extern "C" {
 #include "perl.h"
 #include "XSub.h"
 
-//  #define MYDEBUG
-
-#if !defined(MYDEBUG)
+#if !defined(_DEBUG)
 #    define DBG(a)
 #else
 #    define DBG(a)  MyDebug a
@@ -69,11 +67,11 @@ static const int PERL_OLE_IDLEN = sizeof(PERL_OLE_ID)-1;
 
 static const int OLE_BUF_SIZ = 256;
 
-/* class variable */
-static char szOLE[] = "OLE";
+/* class names */
 static char szWINOLE[] = "Win32::OLE";
 static char szWINOLEENUM[] = "Win32::OLE::Enum";
 static char szWINOLEVARIANT[] = "Win32::OLE::Variant";
+static char szWINOLETIE[] = "Win32::OLE::Tie";
 
 /* class variable names */
 static char LCID_NAME[] = "LCID";
@@ -104,7 +102,7 @@ typedef struct
 
     IDispatch *pDispatch;
     ITypeInfo *pTypeInfo;
-    IEnumVARIANT *pEnum; /* only used in compatibility mode */
+    IEnumVARIANT *pEnum;
 
     HV *stash;
     HV *hashTable;
@@ -216,17 +214,6 @@ QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
 }
 
 void
-ReleaseExcepInfo(EXCEPINFO *pExcepInfo)
-{
-    if (pExcepInfo != NULL) {
-	/* SysFreeString accepts NULL too */
-	SysFreeString(pExcepInfo->bstrSource);
-	SysFreeString(pExcepInfo->bstrDescription);
-	SysFreeString(pExcepInfo->bstrHelpFile);
-    }
-}
-
-void
 ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 {
     dSP;
@@ -270,7 +257,10 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 
 	ReleaseBuffer(pszSource, szSource);
 	ReleaseBuffer(pszDescription, szDescription);
-	ReleaseExcepInfo(pExcepInfo);
+	/* SysFreeString accepts NULL too */
+	SysFreeString(pExcepInfo->bstrSource);
+	SysFreeString(pExcepInfo->bstrDescription);
+	SysFreeString(pExcepInfo->bstrHelpFile);
     }
 
     /* always include OLE error code */
@@ -335,16 +325,12 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 	SvIOK_on(lasterr);
     }
 
-    if (warn == 0 || (warn == 1 && !dowarn)) {
-	ReleaseExcepInfo(pExcepInfo);
-	return;
+    if (warn > 1 || (warn == 1 && dowarn)) {
+	PUSHMARK(sp) ;
+	XPUSHs(sv);
+	PUTBACK;
+	perl_call_pv(warn < 3 ? "Carp::carp" : "Carp::croak", G_DISCARD);
     }
-
-    PUSHMARK(sp) ;
-    XPUSHs(sv);
-    PUTBACK;
-    perl_call_pv(warn < 3 ? "Carp::carp" : "Carp::croak", G_DISCARD);
-    /* NOTREACHED */
 
 }   /* ReportOleError */
 
@@ -425,7 +411,7 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
     SV *inner;
     SV *sv;
     GV **gv = (GV **) hv_fetch(stash, TIE_NAME, TIE_LEN, FALSE);
-    char *szTie = "Win32::OLE::Tie";
+    char *szTie = szWINOLETIE;
 
     if (gv != NULL && (sv = GvSV(*gv)) != NULL && SvPOK(sv))
 	szTie = SvPV(sv, na);
@@ -1082,11 +1068,11 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	    SV *val = newSVpv("",0);
 	    res = SetSVFromVariant(&variant, val, stash);
+	    VariantClear(&variant);
 	    if (FAILED(res)) {
 		SvREFCNT_dec(val);
 		break;
 	    }
-
 	    av_push(pav[dim-1], val);
 
 	    for (index = dim-1 ; index >= 0 ; --index) {
@@ -1107,19 +1093,20 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	if (FAILED(res))
 	    SvREFCNT_dec((SV*)*pav);
 	else {
-	    SV *res = newRV_noinc((SV*)*pav);
+	    SV *retval = newRV_noinc((SV*)*pav);
 
 	    /* eliminate all outer-level single-element lists */
-	    while (SvROK(res)) {
-		AV *av = (AV*)SvRV(res);
-		if (SvTYPE((SV*)av) != SVt_PVAV || av_len(av) != 0)
-		    break;
-		SV *temp = av_pop(av);
-		SvREFCNT_dec(res);
-		res = temp;
-	    }
+	    //while (SvROK(retval)) {
+	    //	AV *av = (AV*)SvRV(retval);
+	    //	if (SvTYPE((SV*)av) != SVt_PVAV || av_len(av) != 0)
+	    //	    break;
+	    //	SV *temp = av_pop(av);
+	    //	SvREFCNT_dec(retval);
+	    //	retval = temp;
+	    //}
 
-	    sv_setsv(sv, res);
+	    sv_setsv(sv, retval);
+	    SvREFCNT_dec(retval);
 	}
 
 	Safefree(pArrayIndex);
@@ -1259,6 +1246,8 @@ DllMain
 	 */
 
 	/* XXX Should we EnterCriticalSection(&CriticalSection) ??? */
+	DBG(("DLL_PROCESS_DETACH\n"));
+
 	while (g_pObj != NULL) {
 	    DBG(("Cleaning out escaped object |%lx|\n", g_pObj));
 
@@ -1299,8 +1288,11 @@ DllMain
 	    g_pObj = g_pObj->pNext;
 	}
 
+	DBG(("OleUninitialize\n"));
 	OleUninitialize();
+	DBG(("DeleteCriticalSection\n"));
 	DeleteCriticalSection(&CriticalSection);
+	DBG(("Really the end...\n"));
 	break;
     }
 
@@ -2423,7 +2415,7 @@ PPCODE:
 
     case VT_BOOL:
 	/* Either all bits are 0 or ALL bits MUST BE 1 */
-	V_BOOL(&pVarObj->variant) = SvIV(data) ? ~0 : 0;
+	V_BOOL(&pVarObj->variant) = SvTRUE(data) ? ~0 : 0;
 	break;
 
     /* case VT_VARIANT: invalid without VT_BYREF */
