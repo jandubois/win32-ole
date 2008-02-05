@@ -4,8 +4,9 @@
 # This file is based on ../lib/OLE.pm from ActiveState build 315.
 
 # Compatibility notes:
-# - GetObject -> GetActiveObject
-# - keys %$collection -> Win32::OLE::Enum->All($collection)
+# - "GetObject" -> "GetActiveObject"
+# - "keys %$collection" -> "Win32::OLE::Enum->All($collection)"
+#                       or "in $Collection"
 # - "unnamed" default method retries
 
 ########################################################################
@@ -69,6 +70,9 @@ sub STORE {
 package OLE;
 ########################################################################
 use Win32::OLE qw(CP_ACP);
+
+# Use OleInitialize() instead of CoInitializeEx:
+Win32::OLE->Initialize(Win32::OLE::COINIT_OLEINITIALIZE);
 
 use strict;
 

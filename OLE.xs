@@ -114,6 +114,7 @@ static char TIE_NAME[] = "Tie";
 static const int TIE_LEN = sizeof(TIE_NAME)-1;
 
 typedef HRESULT (STDAPICALLTYPE FNCOINITIALIZEEX)(LPVOID, DWORD);
+typedef void (STDAPICALLTYPE FNCOUNINITIALIZE)(void);
 typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
     (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
 
@@ -129,6 +130,7 @@ typedef struct
     /* DCOM function addresses are resolved dynamically */
     HINSTANCE hOLE32;
     FNCOINITIALIZEEX     *pfnCoInitializeEx;
+    FNCOUNINITIALIZE     *pfnCoUninitialize;
     FNCOCREATEINSTANCEEX *pfnCoCreateInstanceEx;
 
 }   PERINTERP;
@@ -161,6 +163,7 @@ static PERINTERP Interp;
 
 #define g_hOLE32                (INTERP->hOLE32)
 #define g_pfnCoInitializeEx     (INTERP->pfnCoInitializeEx)
+#define g_pfnCoUninitialize     (INTERP->pfnCoUninitialize)
 #define g_pfnCoCreateInstanceEx (INTERP->pfnCoCreateInstanceEx)
 
 /* common object header */
@@ -614,7 +617,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
     }
 
     SetLastOleError(stash, res, SvPV(sv, len));
-
+    
     if (OleWarn > 1 || (OleWarn == 1 && PL_dowarn)) {
 	PUSHMARK(sp) ;
 	XPUSHs(sv);
@@ -1548,29 +1551,41 @@ SpinMessageLoop(void)
 	TranslateMessage(&msg);
 	DispatchMessage(&msg);
     }
-}
+
+}   /* SpinMessageLoop */
 
 void
-Initialize(void)
+Initialize(DWORD dwCoInit=COINIT_MULTITHREADED)
 {
     dPERINTERP;
 
     DBG(("Initialize\n"));
     EnterCriticalSection(&g_CriticalSection);
-    if (!g_bInitialized) {
-	DBG(("CoInitialize(Ex)?\n"));
-	if (g_pfnCoInitializeEx == NULL)
-	    CoInitialize(NULL);
-	else
-	    g_pfnCoInitializeEx(NULL, COINIT_MULTITHREADED);
+
+    if (!g_bInitialized)
+    {
+	DBG(("(Co|Ole)Initialize(Ex)?\n"));
+	if (dwCoInit == -1) {
+	    OleInitialize(NULL);
+	    g_pfnCoUninitialize = &OleUninitialize;
+	}
+	else {
+	    if (g_pfnCoInitializeEx == NULL)
+		CoInitialize(NULL);
+	    else
+		g_pfnCoInitializeEx(NULL, dwCoInit);
+	    g_pfnCoUninitialize = &CoUninitialize;
+	}
 
 	g_bInitialized = TRUE;
     }
+
     LeaveCriticalSection(&g_CriticalSection);
-}
+
+}   /* Initialize */
 
 void
-Uninitialize(PERINTERP *pInterp, int magic)
+Uninitialize(PERINTERP *pInterp, int magic=0)
 {
     /* This function is called during Perl interpreter cleanup after all objects
      * have already been destroyed. Do NOT access Perl data structures! */
@@ -1614,8 +1629,7 @@ Uninitialize(PERINTERP *pInterp, int magic)
 
 	SpinMessageLoop();
 	DBG(("CoUninitialize\n"));
-	CoUninitialize();
-
+	g_pfnCoUninitialize();
 	g_bInitialized = FALSE;
     }
     LeaveCriticalSection(&g_CriticalSection);
@@ -1634,14 +1648,16 @@ Uninitialize(PERINTERP *pInterp, int magic)
 #endif
 	DBG(("Interpreter exit\n"));
     }
-}
+
+}   /* Uninitialize */
 
 static void
 AtExit(CPERLarg_ void *pVoid)
 {
     Uninitialize((PERINTERP*)pVoid, WINOLE_MAGIC);
     DBG(("AtExit done\n"));
-}
+
+}   /* AtExit */
 
 void
 Bootstrap(void)
@@ -1683,7 +1699,8 @@ Bootstrap(void)
 #else
     perl_atexit(AtExit, INTERP);
 #endif
-}
+
+}   /* Bootstrap */
 
 BOOL
 CallObjectMethod(SV **mark, I32 ax, I32 items, char *pszMethod)
@@ -1737,7 +1754,8 @@ GetStash(SV *sv)
 	return gv_stashsv(sv, TRUE);
     else
 	return (HV *)&PL_sv_undef;
-}
+
+}   /* GetStash */
 
 #if defined(__cplusplus)
 }
@@ -1766,14 +1784,18 @@ PPCODE:
 
     DBG(("Win32::OLE->%s()\n", paszMethod[ix]));
 
-    if (items != 1 && ix != 1)
-	warn("Usage: Win32::OLE->%s()", paszMethod[ix]);
-
     switch (ix)
     {
     case 0:
-	Initialize();
+    {
+	DWORD dwCoInit = COINIT_MULTITHREADED;
+
+	if (items > 1 && SvOK(ST(1)))
+	    dwCoInit = SvIV(ST(1));
+
+	Initialize(dwCoInit);
 	break;
+    }
     case 1:
     {
 	int magic = 0;
@@ -1835,9 +1857,11 @@ PPCODE:
 	else
 	    res = CLSIDFromString(pBuffer, &clsid);
 	ReleaseBuffer(pBuffer, Buffer);
+ DBG(("CLSID.. returned res=0x%08x\n", res));
 	if (SUCCEEDED(res)) {
 	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
 				   IID_IDispatch, (void**)&pDispatch);
+ DBG(("CoCreateInstance.. returned res=0x%08x\n", res));
 	}
 	if (!CheckOleError(stash, res)) {
 	    ST(0) = CreatePerlObject(stash, pDispatch, destroy);

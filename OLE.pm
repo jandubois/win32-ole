@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0901';
+$VERSION = '0.0902';
 
 use Carp;
 use Exporter;
@@ -39,10 +39,14 @@ $Warn = 1;
 sub CP_ACP {0;}    # ANSI codepage
 sub CP_OEMCP {1;}  # OEM codepage
 
-sub DISPATCH_METHOD         {1;}
-sub DISPATCH_PROPERTYGET    {2;}
-sub DISPATCH_PROPERTYPUT    {4;}
-sub DISPATCH_PROPERTYPUTREF {8;}
+sub DISPATCH_METHOD          {1;}
+sub DISPATCH_PROPERTYGET     {2;}
+sub DISPATCH_PROPERTYPUT     {4;}
+sub DISPATCH_PROPERTYPUTREF  {8;}
+
+sub COINIT_MULTITHREADED     {0;}  # Default
+sub COINIT_APARTMENTTHREADED {2;}  # Use single threaded apartment model
+sub COINIT_OLEINITIALIZE     {-1;} # Use OleInitialize instead of CoInitializeEx
 
 # The following class methods are pure XS code. They will delegate
 # to Dispatch when called as object methods.
@@ -52,13 +56,17 @@ sub DISPATCH_PROPERTYPUTREF {8;}
 # - GetObject(pathname)
 # - QueryObjectType(object)
 #
+# - Initialize(coinit)
+# - Uninitialize()
+# - SpinMessageLoop()
+#
 # The following method is pure XS (and not available as OLE method)
 # - DESTROY()
 #
 
 
-# CreateObject is defined here because it is documented in the
-# "Learning Perl on Win32 Systems" book. Please use Win32::OLE->new().
+# CreateObject is defined here only because it is documented in the
+# "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().
 sub CreateObject {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
 	$AUTOLOAD = 'CreateObject';
@@ -98,13 +106,14 @@ sub SetProperty {
     my $retval;
     my $wFlags = DISPATCH_PROPERTYPUT;
     if (@args) {
+	# If the value is an object then it must be set by reference!
 	my $value = $args[scalar(@args)-1];
 	if (UNIVERSAL::isa($value, 'Win32::OLE')) {
 	    $wFlags = DISPATCH_PROPERTYPUTREF;
 	}
 	elsif (UNIVERSAL::isa($value,'Win32::OLE::Variant')) {
 	    my $type = $value->Type;
-	    # VT_DISPATCH or VT_UNKNOWN
+	    # VT_DISPATCH and VT_UNKNOWN represent COM objects
 	    $wFlags = DISPATCH_PROPERTYPUTREF if $type == 9 || $type == 13;
 	}
     }
@@ -128,10 +137,10 @@ sub AUTOLOAD {
 
 sub in {
     my @res;
-    require Win32::OLE::Enum;
     while (@_) {
 	my $this = shift;
 	if (UNIVERSAL::isa($this, 'Win32::OLE')) {
+	    require Win32::OLE::Enum;
 	    push @res, Win32::OLE::Enum->All($this);
 	}
 	elsif (ref($this) eq 'ARRAY') {
@@ -145,13 +154,13 @@ sub in {
 }
 
 sub valof {
-    require Win32::OLE::Variant;
     my $arg = shift;
     if (UNIVERSAL::isa($arg, 'Win32::OLE')) {
+	require Win32::OLE::Variant;
 	my ($class) = overload::StrVal($arg) =~ /^([^=]+)=/;
 	no strict 'refs';
-	local $Win32::OLE::Variant::CP = $ {$class."::CP"};
-	local $Win32::OLE::Variant::LCID = $ {$class."::LCID"};
+	local $Win32::OLE::Variant::CP = ${$class."::CP"};
+	local $Win32::OLE::Variant::LCID = ${$class."::LCID"};
 	use strict 'refs';
 	# VT_EMPTY variant for return code
 	my $variant = Win32::OLE::Variant->new(0,0);
