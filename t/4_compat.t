@@ -25,8 +25,7 @@ print "1..$TestCount\n";
 # 1. Create Excel object using CreateObject syntax
 my $xl = CreateObject OLE "Excel.Application";
 unless (defined $xl) {
-    print "# Excel.Application not installed!\n";
-    print "1..0\n";
+    print "1..0 # Skipped: Excel.Application not installed\n";
     exit 0;
 }
 print "# Excel is \"$xl\"\n";

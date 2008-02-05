@@ -26,6 +26,11 @@ unless (defined &Dispatch) {
     &$xs('Win32::OLE');
 }
 
+if (defined &DB::sub && !defined $_Unique) {
+    warn "Win32::OLE operating in debugging mode: _Unique => 1\n";
+    $_Unique = 1;
+}
+
 $Warn = 1;
 
 sub CP_ACP   {0;}     # ANSI codepage
@@ -86,7 +91,7 @@ sub LastError {
     return $$LastError;
 }
 
-my $Options = "^(?:CP|LCID|Warn)\$";
+my $Options = "^(?:CP|LCID|Warn|_NewEnum|_Unique)\$";
 
 sub Option {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
@@ -106,6 +111,7 @@ sub Option {
 	my ($option,$value) = splice @_, 0, 2;
 	_croak("Invalid $class option: $option") if $option !~ /$Options/o;
 	${"${class}::$option"} = $value;
+	$class->_Unique() if $option eq "_Unique";
     }
 }
 
@@ -204,6 +210,10 @@ package Win32::OLE::Tie;
 # Only retry default method under C<no strict 'subs';>
 sub FETCH {
     my ($self,$key) = @_;
+    if ($key eq "_NewEnum") {
+	(my $class = ref $self) =~ s/::Tie$//;
+	return [Win32::OLE::Enum->All($self)] if ${"${class}::_NewEnum"};
+    }
     $self->Fetch($key, !$Win32::OLE::Strict);
 }
 

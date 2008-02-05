@@ -46,3 +46,4 @@ t/3_ole.t		Regression tests for Win32::OLE using Excel 7 and above
 t/4_compat.t		Regression tests for OLE compatibility module
 t/5_unicode.t		Regression tests using the Unicode::String module
 t/6_event.t		Regression tests for OLE Events using Excel
+t/7_overload.t		Regression tests for overloaded number/string conversion

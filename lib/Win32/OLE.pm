@@ -4,9 +4,9 @@ package Win32::OLE;
 
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
-	    $CP $LCID $Warn $LastError);
+	    $CP $LCID $Warn $LastError $_NewEnum $_Unique);
 
-$VERSION = '0.12';
+$VERSION = '0.13';
 
 use Carp;
 use Exporter;
@@ -565,6 +565,52 @@ Label> construct:
   CheckError:
     # ... your error handling code here ...
 
+=item _NewEnum
+
+This option enables additional enumeration support for collection
+objects.  When the C<_NewEnum> option is set, all collections will
+receive one additional property: C<_NewEnum>.  The value of this
+property will be a reference to an array containing all the elements
+of the collection.  This option can be useful when used in conjunction
+with an automatic tree traversal program, like C<Data::Dumper> or an
+object tree browser.  The value of this option should be either 1
+(enabled) or 0 (disabled, default).
+
+    Win32::OLE->Option(_NewEnum => 1);
+    # ...
+    my @sheets = @{$Excel->Worksheets->{_NewEnum}};
+
+In normal application code, this would be better written as:
+
+    use Win32::OLE qw(in);
+    # ...
+    my @sheets = in $Excel->Worksheets;
+
+=item _Unique
+
+The C<_Unique> options guarantees that Win32::OLE will maintain a
+one-to-one mapping between Win32::OLE objects and the native COM/OLE
+objects.  Without this option, you can query the same property twice
+and get two different Win32::OLE objects for the same underlying COM
+object.
+
+Using a unique proxy makes life easier for tree traversal algorithms
+to recognize they already visited a particular node.  This option
+comes at a price: Win32::OLE has to maintain a global hash of all
+outstanding objects and their corresponding proxies.  Identity checks
+on COM objects can also be expensive if the objects reside
+out-of-process or even on a different computer.  Therefore this option
+is off by default unless the program is being run in the debugger.
+
+Unfortunately, this option doesn't always help.  Some programs will
+return new COM objects for even the same property when asked for it
+multiple times (especially for collections).  In this case, there is
+nothing Win32::OLE can do to detect that these objects are in fact
+identical (because they aren't at the COM level).
+
+The C<_Unique> option can be set to either 1 (enabled) or 0 (disabled,
+default).
+
 =back
 
 =head1 EXAMPLES
@@ -903,6 +949,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.12	  13 April 2000
+Version 0.13	  9 May 2000
 
 =cut

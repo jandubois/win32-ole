@@ -21,8 +21,7 @@ close(ME);
 
 eval { require Unicode::String };
 if ($@) {
-    print "# Unicode::String module not found.\n";
-    print "1..0\n";
+    print "1..0 # Skipped: Unicode::String module not installed\n";
     exit 0;
 }
 

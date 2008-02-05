@@ -3,6 +3,16 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.13	Sat, May 6th, 2000
+	- add Win32::OLE::Variant::nothing() function
+	- fix strrev() definition for Borland
+	- changes based on ideas and patches from Rudi Farkas
+          <rudolf.farkas@lecroy.com>:
+	  - add _Unique option to prevent creating duplicate proxy Win32::OLE
+	    objects for the same COM object
+	  - add _NewEnum option to add a visible _NewEnum property to
+	    collection objects.
+
 0.12	Thu, April 13th, 2000
 	- remove call to CoFreeUnusedLibraries from ReleasePerlObject
 	- added Win32::OLE->FreeUnusedLibraries() class method

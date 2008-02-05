@@ -24,12 +24,14 @@ use Win32::OLE qw(CP_ACP);
 use Win32::OLE::Variant;
 
 use strict;
-use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
+use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError $_NewEnum $_Unique);
 @ISA = qw(Win32::OLE::Variant);
 
 $Warn = 0;
 $LCID = 2 << 10; # LOCALE_SYSTEM_DEFAULT
 $CP = CP_ACP;
+$_NewEnum = 0;
+$_Unique = 0;
 
 sub new {
     my $self = shift;

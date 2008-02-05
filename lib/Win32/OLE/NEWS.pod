@@ -8,6 +8,33 @@ This file contains a history of user visible changes to the
 Win32::OLE::* modules. Only new features and major bug fixes that
 might affect backwards compatibility are included.
 
+=head1 Version 0.13
+
+=head2 nothing() method in Win32::OLE::Variant
+
+The nothing() function returns an empty VT_DISPATCH variant.  It can be
+used to clear an object reference stored in a property
+
+	use Win32::OLE::Variant qw(:DEFAULT nothing);
+	# ...
+	$object->{Property} = nothing;
+
+This has the same effect as the Visual Basic statement
+
+	Set object.Property = Nothing
+
+=head2 new _NewEnum and _Unique options
+
+There are two new options available for the Win32::OLE->Option class
+method: C<_NewEnum> provides the elements of a collection object
+directly as the value of a C<_NewEnum> property.  The C<_Unique>
+option guarantees that Win32::OLE will not create multiple proxy
+objects for the same underlying COM/OLE object.
+
+Both options are only really useful to tree traversal programs or
+during debugging.
+
+
 =head1 Version 0.12
 
 =head2 Additional error handling functionality
@@ -91,9 +118,10 @@ fixed now.
 
 Method calls and property accesses returning a VT_DATE or VT_ERROR
 value would previously translate the value to string or integer
-format.  This has been changed to return a Win32::OLE::Variant
-object. The return values will behave as before when being used as
-strings or numbers due to the overloaded behavior of the Variant objects.
+format.  This has been changed to return a Win32::OLE::Variant object.
+The return values will behave as before if the Win32::OLE::Variant
+module is being used.  This module overloads the conversion of
+the objects to strings and numbers.
 
 
 =head1 Version 0.11 (changes since 0.1008)

@@ -16,7 +16,7 @@ use Exporter;
 	     VT_ARRAY VT_BYREF
 	    );
 
-@EXPORT_OK = qw(CP_ACP CP_OEMCP);
+@EXPORT_OK = qw(CP_ACP CP_OEMCP nothing);
 
 # Automation data types.
 sub VT_EMPTY {0;}
@@ -54,6 +54,10 @@ sub Variant {
     return Win32::OLE::Variant->new(@_);
 }
 
+sub nothing {
+    return Win32::OLE::Variant->new(VT_DISPATCH);
+}
+
 1;
 
 __END__
@@ -80,6 +84,21 @@ the VT_xxx constants.
 =head2 Functions
 
 =over 8
+
+=item nothing()
+
+The nothing() function returns an empty VT_DISPATCH variant.  It can be
+used to clear an object reference stored in a property
+
+	use Win32::OLE::Variant qw(:DEFAULT nothing);
+	# ...
+	$object->{Property} = nothing;
+
+This has the same effect as the Visual Basic statement
+
+	Set object.Property = Nothing
+
+The nothing() function is B<not> exported by default.
 
 =item Variant(TYPE, DATA)
 
