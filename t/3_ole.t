@@ -12,7 +12,8 @@ use Win32::OLE;
 
 use strict qw(vars);
 use vars qw($AUTOLOAD @ISA $Warn $LastError $CP $LCID);
-@ISA = qw(Win32::OLE);
+# use BEGIN because the class is already used in BEGIN block later
+BEGIN { @ISA = qw(Win32::OLE); } 
 
 $CP   = $Win32::OLE::CP;
 $LCID = $Win32::OLE::LCID;
@@ -33,7 +34,6 @@ package main;
 use strict;
 use FileHandle;
 use Win32::OLE qw(CP_ACP CP_OEMCP in valof with OVERLOAD);
-use Win32::OLE::Const ('Microsoft Excel');
 use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG);
 use Win32::OLE::Variant;
 use vars qw($Test $Fail);
@@ -68,18 +68,23 @@ sub Quit {
 }
 
 # 1. Create a new Excel automation server
-$Excel::Warn = 0;
-my $Excel = Excel->new('Excel.Application', \&Quit);
-$Excel::Warn = 2;
-unless (defined $Excel) {
-    print "# Excel.Application not installed!\n";
-    my $Msg = Excel->LastError;
-    chomp $Msg;
-    $Msg =~ s/\n/\n\# /g;
-    print "# $Msg\n";
-    print "1..0\n";
-    exit 0;
+my $Excel;
+BEGIN {
+    $Excel::Warn = 0;
+    $Excel = Excel->new('Excel.Application', \&Quit);
+    $Excel::Warn = 2;
+    unless (defined $Excel) {
+	print "# Excel.Application not installed!\n";
+	my $Msg = Excel->LastError;
+	chomp $Msg;
+	$Msg =~ s/\n/\n\# /g;
+	print "# $Msg\n";
+	print "1..0\n";
+	exit 0;
+    }
 }
+# We only ever get here if Excel is actually installed
+use Win32::OLE::Const ('Microsoft Excel');
 
 $Test = 0;
 print "1..$TestCount\n";

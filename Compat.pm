@@ -105,6 +105,7 @@ sub AUTOLOAD {
     Carp::croak("Cannot autoload class method \"$AUTOLOAD\"") 
       unless ref($self) && UNIVERSAL::isa($self,'OLE');
 
+    local $^H = 0; # !hack alert!
     unless (defined $self->Dispatch($AUTOLOAD, $retval, @_)) {
 	# Retry default method
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);

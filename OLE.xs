@@ -22,6 +22,8 @@
  *
  */
 
+#define MY_VERSION "Win32::OLE-" XS_VERSION
+
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #include <windows.h>
 
@@ -229,7 +231,8 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     SvREFCNT_dec(subkey);
     RegCloseKey(hKeyLocalMachine);
     return res;
-}
+
+}   /* CLSIDFromRemoteRegistry */
 
 /* The following strategy is used to avoid the limitations of hardcoded
  * buffer sizes: Conversion between wide char and multibyte strings
@@ -266,7 +269,7 @@ GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
 
     count = WideCharToMultiByte(cp, 0, wide, -1, NULL, 0, NULL, NULL);
     if (count == 0) { /* should never happen */
-	warn("Win32::OLE: GetMultiByte() failure: %lu", GetLastError());
+	warn(MY_VERSION ": GetMultiByte() failure: %lu", GetLastError());
 	DEBUGBREAK;
 	if (psz == NULL)
 	    New(0, psz, 1, char);
@@ -277,7 +280,8 @@ GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
     Newz(0, psz, count, char);
     WideCharToMultiByte(cp, 0, wide, -1, psz, count, NULL, NULL);
     return psz;
-}
+
+}   /* GetMultiByte */
 
 SV *
 sv_setwide(SV *sv, OLECHAR *wide, UINT cp)
@@ -316,7 +320,7 @@ GetWideChar(char *psz, OLECHAR *wide, int len, UINT cp)
 
     count = MultiByteToWideChar(cp, 0, psz, -1, NULL, 0);
     if (count == 0) {
-	warn("Win32::OLE: GetWideChar() failure: %lu", GetLastError());
+	warn(MY_VERSION ": GetWideChar() failure: %lu", GetLastError());
 	DEBUGBREAK;
 	if (wide == NULL)
 	    New(0, wide, 1, OLECHAR);
@@ -327,7 +331,8 @@ GetWideChar(char *psz, OLECHAR *wide, int len, UINT cp)
     Newz(0, wide, count, OLECHAR);
     MultiByteToWideChar(cp, 0, psz, -1, wide, count);
     return wide;
-}
+
+}   /* GetWideChar */
 
 IV
 QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
@@ -352,7 +357,7 @@ SetLastOleError(HV *stash, HRESULT res=S_OK, char *pszMsg=NULL)
     sv_catpvn(sv, LASTERR_NAME, LASTERR_LEN);
     SV *lasterr = perl_get_sv(SvPV(sv, na), TRUE);
     if (lasterr == NULL) {
-	warn("Win32::OLE: SetLastOleError: couldnot create package variable %s",
+	warn(MY_VERSION ": SetLastOleError: couldnot create variable %s",
 	     LASTERR_NAME);
 	DEBUGBREAK;
 	return;
@@ -404,7 +409,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcep=NULL, SV *svAdd=NULL)
     }
 
     /* always include OLE error code */
-    sv_catpvf(sv, "OLE error 0x%08x", res);
+    sv_catpvf(sv, MY_VERSION " error 0x%08x", res);
 
     /* try to append ': "error text"' from message catalog */
     char *pszMsgText;
@@ -536,7 +541,7 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
     /* returns a mortal reference to a new Perl OLE object */
 
     if (pDispatch == NULL) {
-	warn("Win32::OLE: CreatePerlObject() No IDispatch interface");
+	warn(MY_VERSION ": CreatePerlObject() No IDispatch interface");
 	DEBUGBREAK;
 	return &sv_undef;
     }
@@ -669,7 +674,7 @@ GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
 		    return pObj;
 	}
     }
-    warn("Win32::OLE: GetOleObject() Not a %s object", szWINOLE);
+    warn(MY_VERSION ": GetOleObject() Not a %s object", szWINOLE);
     DEBUGBREAK;
     return (WINOLEOBJECT*)NULL;
 }
@@ -684,7 +689,7 @@ GetOleEnumObject(SV *sv, BOOL bDESTROY=FALSE)
 	    if (pEnumObj->pEnum != NULL || bDESTROY)
 		return pEnumObj;
     }
-    warn("Win32::OLE: GetOleEnumObject() Not a %s object", szWINOLEENUM);
+    warn(MY_VERSION ": GetOleEnumObject() Not a %s object", szWINOLEENUM);
     DEBUGBREAK;
     return (WINOLEENUMOBJECT*)NULL;
 }
@@ -698,7 +703,7 @@ GetOleVariantObject(SV *sv)
 	if (pVarObj != NULL && pVarObj->header.lMagic == WINOLEVARIANT_MAGIC)
 	    return pVarObj;
     }
-    warn("Win32::OLE: GetOleVariantObject() Not a %s object", szWINOLEVARIANT);
+    warn(MY_VERSION ": GetOleVariantObject() Not a %s object", szWINOLEVARIANT);
     DEBUGBREAK;
     return (WINOLEVARIANTOBJECT*)NULL;
 }
@@ -764,7 +769,7 @@ FetchTypeInfo(WINOLEOBJECT *pObj)
     }
 
     if (CheckOleError(stash, res)) {
-	warn("Win32::OLE: FetchTypeInfo() GetTypeInfoCount failed");
+	warn(MY_VERSION ": FetchTypeInfo() GetTypeInfoCount failed");
 	DEBUGBREAK;
 	return;
     }
@@ -1740,8 +1745,10 @@ PPCODE:
 	if (length > 0) {
 	    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
 	    if (FAILED(res)) {
-		err = sv_2mortal(newSVpvf(" in GetIDsOfNames \"%s\"", buffer));
-		ReportOleError(stash, res, NULL, err);
+		if (hints & HINT_STRICT_SUBS) {
+		    err = newSVpvf(" in GetIDsOfNames \"%s\"", buffer);
+		    ReportOleError(stash, res, NULL, sv_2mortal(err));
+		}
 		ST(0) = &sv_undef;
 		XSRETURN(1);
 	    }
@@ -2554,7 +2561,7 @@ PPCODE:
 
     int count = (items > 1) ? SvIV(ST(1)) : 1;
     if (count < 1) {
-	warn("Win32::OLE::Enum::Next: invalid Count %ld", count);
+	warn(MY_VERSION ": Win32::OLE::Enum::Next: invalid Count %ld", count);
 	DEBUGBREAK;
 	count = 1;
     }
@@ -2748,7 +2755,7 @@ PPCODE:
 	break;
 
     default:
-	warn("Win32::OLE::Variant::new: Invalid value type %d",
+	warn(MY_VERSION ": Win32::OLE::Variant::new: Invalid value type %d",
 	     V_VT(&pVarObj->variant));
 	DEBUGBREAK;
 	Safefree(pVarObj);
