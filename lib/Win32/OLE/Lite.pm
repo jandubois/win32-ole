@@ -61,7 +61,7 @@ sub HRESULT {
 # "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().
 sub CreateObject {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'CreateObject';
+	$AUTOLOAD = ref($_[0]) . '::CreateObject';
 	goto &AUTOLOAD;
     }
 
@@ -81,7 +81,7 @@ sub LastError {
     }
 
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'LastError';
+	$AUTOLOAD = ref($_[0]) . '::LastError';
 	goto &AUTOLOAD;
     }
 
@@ -95,7 +95,7 @@ my $Options = "^(?:CP|LCID|Warn|_NewEnum|_Unique)\$";
 
 sub Option {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'Option';
+	$AUTOLOAD = ref($_[0]) . '::Option';
 	goto &AUTOLOAD;
     }
 
@@ -148,13 +148,13 @@ sub SetProperty {
 
 sub AUTOLOAD {
     my $self = shift;
-    $AUTOLOAD = substr $AUTOLOAD, rindex($AUTOLOAD, ':')+1;
-    _croak("Cannot autoload class method \"$AUTOLOAD\"")
+    my $autoload = substr $AUTOLOAD, rindex($AUTOLOAD, ':')+1;
+    _croak("Cannot autoload class method \"$autoload\"")
 	unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
-    my $success = $self->Dispatch($AUTOLOAD, my $retval, @_);
+    my $success = $self->Dispatch($autoload, my $retval, @_);
     unless (defined $success || ($^H & 0x200) != 0) {
 	# Retry default method if C<no strict 'subs';>
-	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
+	$self->Dispatch(undef, $retval, $autoload, @_);
     }
     return $retval;
 }

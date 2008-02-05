@@ -20,7 +20,6 @@ my $TestCount = grep(/\+\+\$Test/,<ME>);
 close(ME);
 
 my $Test = 0;
-print "1..$TestCount\n";
 
 # 1. Create Excel object using CreateObject syntax
 my $xl = CreateObject OLE "Excel.Application";
@@ -28,6 +27,8 @@ unless (defined $xl) {
     print "1..0 # Skipped: Excel.Application not installed\n";
     exit 0;
 }
+print "1..$TestCount\n";
+
 print "# Excel is \"$xl\"\n";
 my $bk = $xl->Workbooks->Add;
 # This also checks if overloading was turned off again

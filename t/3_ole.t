@@ -37,14 +37,17 @@ sub AUTOLOAD {
 
 package main;
 use strict;
+no warnings "utf8";
 
 use Cwd;
 use FileHandle;
 use Sys::Hostname;
 
-use Win32::OLE qw(CP_ACP CP_OEMCP HRESULT in valof with);
+use Win32::OLE qw(CP_ACP CP_OEMCP CP_UTF8 HRESULT in valof with);
 use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG);
 use Win32::OLE::Variant;
+
+$Excel::CP = CP_UTF8;
 
 use vars qw($Test $Fail);
 
@@ -242,18 +245,25 @@ printf "# Value is %s\n", $Cell->Value;
 print "not " unless $Cell->Value eq ('a' x 300);
 printf "ok %d\n", ++$Test;
 
-# 18. Test 'SetProperty' function
+# 18. Assign a substr() magical lvalue (doesn't get POK bit set)
+$Cell->Dispatch([Win32::OLE::DISPATCH_PROPERTYPUT, 'Value'],
+		my $retval, substr('xyz', 0, 1));
+printf "# Value is %s\n", $Cell->Value;
+print "not " unless $Cell->Value eq 'x';
+printf "ok %d\n", ++$Test;
+
+# 19. Test 'SetProperty' function
 $Cell->SetProperty('Value', 4711);
 printf "# Value is %s\n", $Cell->Value;
 print "not " unless $Cell->Value == 4711;
 printf "ok %d\n", ++$Test;
 
-# 19. The following tests rely on the fact that the font is not yet bold
+# 20. The following tests rely on the fact that the font is not yet bold
 printf "# Bold: %s\n", $Cell->Style->Font->Bold;
 print "not " if $Cell->Style->Font->Bold;
 printf "ok %d\n", ++$Test;
 
-# 20. Assignment by DISPATCH_PROPERTYPUTREF shouldn't work
+# 21. Assignment by DISPATCH_PROPERTYPUTREF shouldn't work
 my $Style = $Book->Styles->Add("MyStyle");
 $Style->Font->{Bold} = 1;
 { local $Excel::Warn = 0; $Cell->{Style} = $Style }
@@ -263,63 +273,89 @@ printf "# Excel->LastError is 0x%x\n", $LastError;
 print "not " if $LastError != HRESULT(0x80020003) || $Cell->Style->Font->Bold;
 printf "ok %d\n", ++$Test;
 
-# 21. But DISPATCH_PROPERTYPUT should be ok
+# 22. But DISPATCH_PROPERTYPUT should be ok
 $Cell->LetProperty('Style', $Style);
 printf "# Bold: %s\n", $Cell->Style->Font->Bold;
 print "not " unless $Cell->Style->Font->Bold;
 printf "ok %d\n", ++$Test;
 
-# 22. Set a cell range from an array ref containing an IV, PV and NV
-$Sheet->Range("A8:C9")->{Value} = [[undef, 'Camel'],[42, 'Perl', 3.1415]];
+# 23. Set a cell range from an array ref containing an IV, PV and NV
+$Sheet->Range("A8:C9")->{Value} = [[undef, 'Camel', "\x{263a}"],[42, 'Perl', 3.1415]];
 $Value = $Sheet->Cells(9,2)->Value . $Sheet->Cells(8,2)->Value;
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'PerlCamel';
 printf "ok %d\n", ++$Test;
 
-# 23. Retrieve float value (esp. interesting in foreign locales)
+# 24. Retrieve float value (esp. interesting in foreign locales)
 $Value = $Sheet->Cells(9,3)->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless $Value == 3.1415;
 printf "ok %d\n", ++$Test;
 
-# 24. Retrieve a 0 dimensional range; check array data structure
+# 25. Retrieve unicode value.
+$Value = $Sheet->Cells(8,3)->{Value};
+print "# Value is \"$Value\"\n";
+print "not " unless $Value eq "\x{263a}";
+printf "ok %d\n", ++$Test;
+
+# 26. Make sure the length of the unicode string is correct.
+$Value = $Sheet->Cells(8,3)->{Value};
+print "# length(Value) is ", length($Value), "\n";
+print "not " unless length($Value) == length("\x{263a}");
+printf "ok %d\n", ++$Test;
+
+# 27. Use Unicode::String object to assign BSTR value
+eval { require Unicode::String };
+++$Test;
+if ($@) {
+    printf "ok %d # Skipped: Unicode::String module not installed\n", $Test;
+}
+else {
+    $Sheet->Cells(1,3)->{Value} = Unicode::String::utf8("\342\230\272");
+    $Value = $Sheet->Cells(1,3)->{Value};
+    print "# Value is \"$Value\"\n";
+    print "not " unless $Value eq "\x{263a}" && length($Value) == 1;
+    printf "ok %d\n", $Test;
+}
+
+# 28. Retrieve a 0 dimensional range; check array data structure
 $Value = $Sheet->Range("B8")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " if ref $Value;
 printf "ok %d\n", ++$Test;
 
-# 25. Retrieve a 1 dimensional row range; check array data structure
+# 29. Retrieve a 1 dimensional row range; check array data structure
 $Value = $Sheet->Range("B8:C8")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 1 && ref $$Value[0];
 printf "ok %d\n", ++$Test;
 
-# 26. Retrieve a 1 dimensional column range; check array data structure
+# 30. Retrieve a 1 dimensional column range; check array data structure
 $Value = $Sheet->Range("B8:B9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
-# 27. Retrieve a 2 dimensional range; check array data structure
+# 31. Retrieve a 2 dimensional range; check array data structure
 $Value = $Sheet->Range("B8:C9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
-# 28. Check contents of 2 dimensional array
+# 32. Check contents of 2 dimensional array
 $Value = $$Value[0][0] . $$Value[1][0] . $$Value[1][1];
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'CamelPerl3.1415';
 printf "ok %d\n", ++$Test;
 
-# 29. Set a cell formula and retrieve calculated value
+# 33. Set a cell formula and retrieve calculated value
 $Sheet->Cells(3,1)->{Formula} = '=PI()';
 $Value = $Sheet->Cells(3,1)->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
-# 30. Add single worksheet and check that worksheet count is incremented
+# 34. Add single worksheet and check that worksheet count is incremented
 my $Count = $Sheets->{Count};
 $Book->Worksheets->Add;
 $Value = $Sheets->{Count};
@@ -327,7 +363,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+1;
 printf "ok %d\n", ++$Test;
 
-# 31. Add 2 more sheets, optional arguments are omitted
+# 35. Add 2 more sheets, optional arguments are omitted
 $Count = $Sheets->{Count};
 $Book->Worksheets->Add(undef,undef,2);
 $Value = $Sheets->{Count};
@@ -335,7 +371,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 32. Add 3 more sheets before sheet 2 using a named argument
+# 36. Add 3 more sheets before sheet 2 using a named argument
 $Count = $Sheets->{Count};
 $Book->Worksheets(2)->{Name} = 'XYZZY';
 $Sheets->Add($Book->Worksheets(2), {Count => 3});
@@ -344,13 +380,13 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+3;
 printf "ok %d\n", ++$Test;
 
-# 33. Previous sheet 2 should now be sheet 5
+# 37. Previous sheet 2 should now be sheet 5
 $Value = $Book->Worksheets(5)->{Name};
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'XYZZY';
 printf "ok %d\n", ++$Test;
 
-# 34. Add 2 more sheets at the end using 2 named arguments
+# 38. Add 2 more sheets at the end using 2 named arguments
 $Count = $Sheets->{Count};
 # Following line doesn't work with Excel 7 (Seems like an Excel bug?)
 # $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count})});
@@ -358,7 +394,7 @@ $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count}-1)});
 print "not " unless $Sheets->{Count} == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 35. Number of objects in an enumeration must match its "Count" property
+# 39. Number of objects in an enumeration must match its "Count" property
 my @Sheets = in $Sheets;
 printf "# \$Sheets->{Count} is %d\n", $Sheets->{Count};
 printf "# scalar(\@Sheets) is %d\n", scalar(@Sheets);
@@ -369,7 +405,7 @@ print "not " unless $Sheets->{Count} == @Sheets;
 printf "ok %d\n", ++$Test;
 undef @Sheets;
 
-# 36. Enumerate all application properties using the C<keys> function
+# 40. Enumerate all application properties using the C<keys> function
 my @Properties = keys %$Excel;
 printf "# Number of Excel application properties: %d\n", scalar(@Properties);
 $Value = grep /^(Parent|Xyzzy|Name)$/, @Properties;
@@ -378,7 +414,7 @@ print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
 undef @Properties;
 
-# 37. Translate character from ANSI -> OEM
+# 41. Translate character from ANSI -> OEM
 my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
 print "# Excel version is $Version\n";
 
@@ -397,15 +433,15 @@ printf "# ANSI is \"$ANSI\" (%d) and OEM is \"$OEM\" (%d)\n", ord($ANSI), ord($O
 print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
 printf "ok %d\n", ++$Test;
 
-# 38. Save workbook to file
+# 42. Save workbook to file
 print "not " unless $Book->SaveAs($File);
 printf "ok %d\n", ++$Test;
 
-# 39. Check if output file exists.
+# 43. Check if output file exists.
 print "not " unless -f $File;
 printf "ok %d\n", ++$Test;
 
-# 40. Access the same file object through a moniker.
+# 44. Access the same file object through a moniker.
 $Obj = Win32::OLE->GetObject($File);
 for ($Count=0 ; $Count < 5 ; ++$Count) {
     my $Type = Win32::OLE->QueryObjectType($Obj);
@@ -420,7 +456,7 @@ print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
 
-# 41. Get return value as Win32::OLE::Variant object
+# 45. Get return value as Win32::OLE::Variant object
 $Cell = $Obj->Worksheets('My Sheet #1')->Range('B9');
 my $Variant = Win32::OLE::Variant->new(VT_EMPTY);
 $Cell->Dispatch('Value', $Variant);
@@ -428,14 +464,17 @@ printf "# Variant is (%s,%s)\n", $Variant->Type, $Variant->Value;
 print "not " unless $Variant->Type == VT_BSTR && $Variant->Value eq 'Perl';
 printf "ok %d\n", ++$Test;
 
-# 42. Use clsid string to start OLE server
+# 46. Use clsid string to start OLE server
 undef $Value;
 eval {
     require Win32::Registry;
+    Win32::Registry->import(qw(RegOpenKeyEx KEY_READ));
     use vars qw($HKEY_CLASSES_ROOT);
-    my ($HKey,$CLSID);
-    $HKEY_CLASSES_ROOT->Create('Excel.Application\CLSID',$HKey);
-    $HKey->QueryValue('', $CLSID);
+    # Use Win32::Registry internals to open registry key in readonly mode
+    RegOpenKeyEx($HKEY_CLASSES_ROOT->{handle}, 'Excel.Application\CLSID',
+		 undef, KEY_READ(), my $HKey);
+    $HKey = Win32::Registry::_new($HKey);
+    $HKey->QueryValue('', my $CLSID);
     $HKey->Close;
     print "# Excel CLSID is $CLSID\n";
     $Obj = Win32::OLE->new($CLSID);
@@ -452,7 +491,7 @@ else {
     printf "ok %d\n", $Test;
 }
 
-# 43. Use DCOM syntax to start server (on local machine though)
+# 47. Use DCOM syntax to start server (on local machine though)
 #     This might fail (on Win95/NT3.5 if DCOM support is not installed.
 $Obj = Win32::OLE->new([hostname, 'Excel.Application'], 'Quit');
 $Value = (Win32::OLE->QueryObjectType($Obj))[0];
@@ -460,7 +499,7 @@ print "# Object application is $Value\n";
 print "not " unless $Value eq 'Excel';
 printf "ok %d\n", ++$Test;
 
-# 44. Find $Excel object via EnumAllObjects()
+# 48. Find $Excel object via EnumAllObjects()
 my $Found = 0;
 $Count = Win32::OLE->EnumAllObjects(sub {
     my $Object = shift;
@@ -473,38 +512,38 @@ print "# Count=$Count Found=$Found\n";
 print "not " unless $Found;
 printf "ok %d\n", ++$Test;
 
-# 45. _NewEnum should normally be non-browseable
+# 49. _NewEnum should normally be non-browseable
 my $Exists = grep /^_NewEnum$/, keys %{$Excel->Worksheets};
 print "# Exists=$Exists\n";
 print "not " if $Exists;
 printf "ok %d\n", ++$Test;
 
-# 46. make _NewEnum visible
+# 50. make _NewEnum visible
 Excel->Option(_NewEnum => 1);
 $Exists = grep /^_NewEnum$/, keys %{$Excel->Worksheets};
 print "# Exists=$Exists\n";
 print "not " unless $Exists;
 printf "ok %d\n", ++$Test;
 
-# 47. _NewEnum available as a method
+# 51. _NewEnum available as a method
 @Sheets = @{$Excel->Worksheets->_NewEnum};
 print "# $_->{Name}\n" foreach @Sheets;
 print "not " unless @Sheets == 11 && grep $_->Name eq "My Sheet #1", @Sheets;
 printf "ok %d\n", ++$Test;
 
-# 48. _NewEnum available as a property
+# 52. _NewEnum available as a property
 @Sheets = @{$Excel->Worksheets->{_NewEnum}};
 print "not " unless @Sheets == 11 && grep $_->Name eq "My Sheet #1", @Sheets;
 printf "ok %d\n", ++$Test;
 
-# 49. Win32::OLE proxies are non-unique by default
+# 53. Win32::OLE proxies are non-unique by default
 my $Application = $Excel->Application;
 my $Parent = $Excel->Parent;
 printf "# Application=%d Parent=%d\n", $Application, $Parent;
 print "not " if $Application == $Parent;
 printf "ok %d\n", ++$Test;
 
-# 50. Parent and Application property should now return the same object
+# 54. Parent and Application property should now return the same object
 Excel->Option(_Unique => 1);
 $Application = $Excel->Application;
 $Parent = $Excel->Parent;
@@ -512,17 +551,17 @@ printf "# Application=%d Parent=%d\n", $Application, $Parent;
 print "not " unless $Application == $Parent;
 printf "ok %d\n", ++$Test;
 
-# 51. Determine Dispatch ID of "Parent"
+# 55. Determine Dispatch ID of "Parent"
 my $dispid = $Excel->GetIDsOfNames("Parent");
 print "# DispID=$dispid\n";
 print "not " unless $dispid == 150;
 printf "ok %d\n", ++$Test;
 
-# 52. Dispatch using numeric ID instead of method/property name
+# 56. Dispatch using numeric ID instead of method/property name
 $Parent = $Excel->Invoke($dispid);
 printf "# Application=%d Parent=%d\n", $Application, $Parent;
 print "not " unless $Application == $Parent;
 printf "ok %d\n", ++$Test;
 
-# 53. Terminate server instance ("ok $Test\n" printed by Excel destructor)
+# 57. Terminate server instance ("ok $Test\n" printed by Excel destructor)
 exit;

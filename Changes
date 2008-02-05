@@ -3,6 +3,41 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.17	Mon, August 11th 2003
+	- add IsNothing and IsNullString predicate methods to
+	  Win32::OLE::Variant
+	- nullstring() variants used to be converted to undef.  They
+	  are now converted to the empty string.
+
+0.1604	unreleased, Thu, July 22nd 2003
+	- fix passing nullstring() as a parameter.  VariantCopy() used
+	  to turn it back into an empty string.
+
+0.1603	unreleased, Thu, March 4th 2003
+	- fix PL_dowarn test to only check the relevant bit
+
+0.1602	unreleased, Thu, February 13th 2003
+	- Work around a Perl problem to support lvalue arguments to OLE
+	  method calls (e.g. substr() expressions).  This will only work
+	  for PV lvalues, and not for IV lvalues (like pos()).
+
+0.1601	Fri, November 22nd, 2002
+	- allow Variant(VT_VARIANT|VT_BYREF) as a shortcut for
+	  Variant(VT_VARIANT|VT_BYREF, Variant(VT_EMPTY))
+
+0.16	Fri, October 18th, 2002
+	- Add Unicode support: passing Unicode strings to methods and
+	  properties as well as returning Unicode back to Perl works now
+	- Unicode::String objects can be passed to methods or assigned
+	  to properties
+	- Make Unicode support compatible with Perl 5.8
+	- Remove prototype checking from Win32::OLE::Forward() so that
+	  it works normally as an automation method too
+	- Fix compatibility problem ($AUTOLOAD munging) with Devel::DProf
+	- Add Win32::OLE::nullstring() method [alias for Variant(VT_BSTR)]
+	- Fix 2_variant.t tests for non-US locales
+	- Fix 3_ole.t test to not require write access to HKCR registry
+
 0.1502	September, 7th 2001
 	- Only turn undef into VT_ERROR/DISP_E_PARAMNOTFOUND when used as a
 	  positional parameter in a method call.  Otherwise turn it into

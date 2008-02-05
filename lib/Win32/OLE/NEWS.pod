@@ -8,9 +8,39 @@ This file contains a history of user visible changes to the
 Win32::OLE::* modules. Only new features and major bug fixes that
 might affect backwards compatibility are included.
 
+=head1 Version 0.17
+
+=head2 New nullstring() function in Win32::OLE::Variant
+
+The nullstring() function returns a VT_BSTR variant containing a NULL
+string pointer.  Note that this is not the same as a VT_BSTR variant
+containing the empty string "".
+
+The nullstring() return value is equivalent to the Visual Basic
+C<vbNullString> constant.
+
+
+=head1 Version 0.16
+
+=head2 Improved Unicode support
+
+Passing Unicode strings to methods and properties as well as returning
+Unicode strings back to Perl works now with both Perl 5.6 and 5.8.
+Note that the Unicode support in 5.8 is much more complete than in 5.6
+or 5.6.1.
+
+C<Unicode::String> objects can now be passed to methods or assigned to
+properties.
+
+You must enable Unicode support by switching Win32::OLE to the UTF8
+codepage:
+
+    Win32::OLE->Option(CP => Win32::OLE::CP_UTF8());
+
+
 =head1 Version 0.13
 
-=head2 nothing() method in Win32::OLE::Variant
+=head2 New nothing() function in Win32::OLE::Variant
 
 The nothing() function returns an empty VT_DISPATCH variant.  It can be
 used to clear an object reference stored in a property
@@ -23,7 +53,7 @@ This has the same effect as the Visual Basic statement
 
 	Set object.Property = Nothing
 
-=head2 new _NewEnum and _Unique options
+=head2 New _NewEnum and _Unique options
 
 There are two new options available for the Win32::OLE->Option class
 method: C<_NewEnum> provides the elements of a collection object

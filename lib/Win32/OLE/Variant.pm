@@ -16,7 +16,7 @@ use Exporter;
 	     VT_ARRAY VT_BYREF
 	    );
 
-@EXPORT_OK = qw(CP_ACP CP_OEMCP nothing);
+@EXPORT_OK = qw(CP_ACP CP_OEMCP nothing nullstring);
 
 # Automation data types.
 sub VT_EMPTY {0;}
@@ -56,6 +56,10 @@ sub Variant {
 
 sub nothing {
     return Win32::OLE::Variant->new(VT_DISPATCH);
+}
+
+sub nullstring {
+    return Win32::OLE::Variant->new(VT_BSTR);
 }
 
 1;
@@ -99,6 +103,15 @@ This has the same effect as the Visual Basic statement
 	Set object.Property = Nothing
 
 The nothing() function is B<not> exported by default.
+
+=item nullstring()
+
+The nullstring() function returns a VT_BSTR variant with a NULL string
+pointer.  This is B<not> the same as a VT_BSTR variant with an empty
+string "".  The nullstring() value is the same as the vbNullString
+constant in Visual Basic.
+
+The nullstring() function is B<not> exported by default.
 
 =item Variant(TYPE, DATA)
 
@@ -290,6 +303,14 @@ As a special case for one dimensional VT_UI1|VT_ARRAY variants the C<Get>
 method without arguments returns the character array as a Perl string.
 
 	print $String->Get, "\n";
+
+=item IsNothing()
+
+Tests if the object is an empty VT_DISPATCH variant.  See also nothing().
+
+=item IsNullString()
+
+Tests if the object is an empty VT_BSTR variant.  See also nullstring().
 
 =item LastError()
 

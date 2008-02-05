@@ -10,7 +10,7 @@
 use strict;
 use FileHandle;
 use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG :DATE :TIME);
-use Win32::OLE::Variant qw(:DEFAULT CP_ACP);
+use Win32::OLE::Variant qw(:DEFAULT CP_ACP nothing nullstring);
 
 $^W = 1;
 STDOUT->autoflush(1);
@@ -243,7 +243,13 @@ print "not " if $v->As(VT_R8) eq $val;
 printf "ok %d\n", ++$Test;
 
 # 32. Format as currency with 4 decimal places
-$str = $v->Currency({NumDigits => 4});
+$str = $v->Currency({NumDigits      => 4,
+		     Grouping       => 3,
+		     NegativeOrder  => 0,
+		     DecimalSep     => '.',
+		     ThousandSep    => ',',
+		     CurrencySymbol => '$',
+		    });
 printf "# Big currency value as CY: $str\n";
 print "not " unless $str eq '($922,337,203,685,477.5808)';
 printf "ok %d\n", ++$Test;
@@ -269,7 +275,25 @@ printf "# v(0)=%s\n", $v->Get(0);
 print "not " unless $v->Get(0) eq 'Hello';
 printf "ok %d\n", ++$Test;
 
-# 36. Test SAFEARRAY f VARIANTs
+# 36. Test NULL BSTR value (vbNullString)
+$v = nullstring();
+printf "# Type=%s NullString=%s\n", $v->Type, $v->IsNullString ? "yes" : "no";
+print "not " unless $v->Type == VT_BSTR && $v->Value eq "" && $v->IsNullString;
+printf "ok %d\n", ++$Test;
+
+# 37. Test "" BSTR value
+$v = Variant(VT_BSTR, "");
+printf "# Type=%s NullString=%s\n", $v->Type, $v->IsNullString ? "yes" : "no";
+print "not " unless $v->Type == VT_BSTR && $v->Value eq "" && !$v->IsNullString;
+printf "ok %d\n", ++$Test;
+
+# 38. Test NULL DISPATCH value
+$v = nothing();
+printf "# Type=%s Nothing=%s\n", $v->Type, $v->IsNothing ? "yes" : "no";
+print "not " unless $v->Type == VT_DISPATCH && $v->IsNothing;
+printf "ok %d\n", ++$Test;
+
+# 39. Test SAFEARRAY f VARIANTs
 #$v = Variant(VT_ARRAY|VT_VARIANT, 2);
 #$v->Put(0,Variant(VT_CY, 4.23))->Put(1,Variant(VT_I2, 42));
 # TODO: Get() doesn't return Variant objects here
