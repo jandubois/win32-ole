@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1011';
+$VERSION = '0.1012';
 
 use Carp;
 use Exporter;
@@ -75,12 +75,12 @@ OLE Automation brings VisualBasic like scripting capabilities and
 offers powerful extensibility and the ability to control many Win32
 applications from Perl scripts.
 
-The Win32::OLE module uses the IDispatch interface exclusively. It is
-not possible to access a custom OLE interface. OLE events and OCX's are
+The Win32::OLE module uses the IDispatch interface exclusively.  It is
+not possible to access a custom OLE interface.  OLE events and OCX's are
 currently not supported.
 
-Actually, that's no longer strictly true. This module now contains
-B<ALPHA> level support for OLE events. This is largely untested and the
+Actually, that's no longer strictly true.  This module now contains
+B<ALPHA> level support for OLE events.  This is largely untested and the
 specific interface might still change in the future.
 
 =head2 Methods
@@ -93,27 +93,27 @@ The new() class method starts a new instance of an OLE Automation object.
 It returns a reference to this object or C<undef> if the creation failed.
 
 The PROGID argument must be either the OLE I<program id> or the I<class id>
-of the required application. The optional DESTRUCTOR specifies a DESTROY-like
-method. This can be either a CODE reference or a string containing an OLE
-method name. It can be used to cleanly terminate OLE applications in case the
+of the required application.  The optional DESTRUCTOR specifies a DESTROY-like
+method.  This can be either a CODE reference or a string containing an OLE
+method name.  It can be used to cleanly terminate OLE applications in case the
 Perl program dies.
 
 To create an object via DCOM on a remote server you can use an array
-reference in place of PROGID. The referenced array must contain the
-machine name and the I<program id> or I<class id>. For example:
+reference in place of PROGID.  The referenced array must contain the
+machine name and the I<program id> or I<class id>.  For example:
 
 	my $obj = Win32::OLE->new(['my.machine.com', 'Program.Id']);
 
 If the PROGID is a I<program id> then Win32::OLE will try to resolve the
-corresponding I<class id> locally. If the I<program id> is not registered
-locally then the remote registry is queried. This will only succeed if
-the local process has read access to the remote registry. The safest
+corresponding I<class id> locally.  If the I<program id> is not registered
+locally then the remote registry is queried.  This will only succeed if
+the local process has read access to the remote registry.  The safest
 (and fastest) method is to specify the C<class id> directly.
 
 =item Win32::OLE->EnumAllObjects([CALLBACK])
 
 This class method returns the number Win32::OLE objects currently in
-existance. It will call the optional CALLBACK function for each of
+existance.  It will call the optional CALLBACK function for each of
 these objects:
 
 	$Count = Win32::OLE->EnumAllObjects(sub {
@@ -122,33 +122,33 @@ these objects:
 	    printf "# Object=%s Class=%s\n", $Object, $Class;
 	});
 
-The EnumAllObjects() method is primarily a debugging tool. It can be
+The EnumAllObjects() method is primarily a debugging tool.  It can be
 used e.g. in an END block to check if all external connections have
 been properly destroyed.
 
 =item Win32::OLE->GetActiveObject(CLASS[, DESTRUCTOR])
 
 The GetActiveObject() class method returns an OLE reference to a
-running instance of the specified OLE automation server. It returns
-C<undef> if the server is not currently active. It will croak if
-the class is not even registered. The optional DESTRUCTOR method takes
-either a method name or a code reference. It is executed when the last
-reference to this object goes away. It is generally considered C<impolite>
+running instance of the specified OLE automation server.  It returns
+C<undef> if the server is not currently active.  It will croak if
+the class is not even registered.  The optional DESTRUCTOR method takes
+either a method name or a code reference.  It is executed when the last
+reference to this object goes away.  It is generally considered C<impolite>
 to stop applications that you did not start yourself.
 
 =item Win32::OLE->GetObject(MONIKER[, DESTRUCTOR])
 
 The GetObject() class method returns an OLE reference to the specified
-object. The object is specified by a pathname optionally followed by
-additional item subcomponent separated by exclamation marks '!'. The
+object.  The object is specified by a pathname optionally followed by
+additional item subcomponent separated by exclamation marks '!'.  The
 optional DESTRUCTOR argument has the same semantics as the DESTRUCTOR in
 new() or GetActiveObject().
 
 =item Win32::OLE->Initialize([COINIT])
 
 The Initialize() class method can be used to specify an alternative
-apartment model for the Perl thread. It must be called B<before> the
-first OLE object is created. If the C<Win32::OLE::Const> module is
+apartment model for the Perl thread.  It must be called B<before> the
+first OLE object is created.  If the C<Win32::OLE::Const> module is
 used then the call to the Initialize() method must be made from a BEGIN
 block before the first C<use> statement for the C<Win32::OLE::Const>
 module.
@@ -163,25 +163,25 @@ COINIT_OLEINITIALIZE is sometimes needed when an OLE object uses
 additional OLE compound document technologies not available from the
 normal COM subsystem (for example MAPI.Session seems to require it).
 Both COINIT_OLEINITIALIZE and COINIT_APARTMENTTHREADED create a hidden
-top level window and a message queue for the Perl process. This may
+top level window and a message queue for the Perl process.  This may
 create problems with other application, because Perl normally doesn't
-process its message queue. This means programs using synchronous
+process its message queue.  This means programs using synchronous
 communication between applications (such as DDE initiation), may hang
 until Perl makes another OLE method call/property access or terminates.
 This applies to InstallShield setups and many things started to shell
-associations. Please try to utilize the C<Win32::OLE-E<gt>SpinMessageLoop>
+associations.  Please try to utilize the C<Win32::OLE-E<gt>SpinMessageLoop>
 and C<Win32::OLE-E<gt>Uninitialize> methods if you can not use the default
 COINIT_MULTITHREADED model.
 
 =item OBJECT->Invoke(METHOD[, ARGS])
 
 The Invoke() object method is an alternate way to invoke OLE
-methods. It is normally equivalent to C<$OBJECT->METHOD(@ARGS)>. This
+methods.  It is normally equivalent to C<$OBJECT->METHOD(@ARGS)>.  This
 function must be used if the METHOD name contains characters not valid
-in a Perl variable name (like foreign language characters). It can
+in a Perl variable name (like foreign language characters).  It can
 also be used to invoke the default method of an object even if the
-default method has not been given a name in the type library. In this
-case use <undef> or C<''> as the method name. To invoke an OLE objects
+default method has not been given a name in the type library.  In this
+case use <undef> or C<''> as the method name.  To invoke an OLE objects
 native Invoke() method (if such a thing exists), please use:
 
 	$Object->Invoke('Invoke', @Args);
@@ -189,14 +189,14 @@ native Invoke() method (if such a thing exists), please use:
 =item Win32::OLE->LastError()
 
 The LastError() class method returns the last recorded OLE
-error. This is a dual value like the C<$!> variable: in a numeric
+error.  This is a dual value like the C<$!> variable: in a numeric
 context it returns the error number and in a string context it returns
-the error message. The error number is a signed HRESULT value. Please
+the error message.  The error number is a signed HRESULT value.  Please
 use the L<HRESULT(ERROR)> function to convert an unsigned hexadecimal
 constant to a signed HRESULT.
 
 The last OLE error is automatically reset by a successful OLE
-call. The numeric value can also explicitly be set by a call (which will
+call.  The numeric value can also explicitly be set by a call (which will
 discard the string value):
 
 	Win32::OLE->LastError(0);
@@ -226,7 +226,7 @@ See L<OBJECT->SetProperty(NAME,ARGS,VALUE)> for details.
 =item Win32::OLE->Option(OPTION)
 
 The Option() class method can be used to inspect and modify
-L<Module Options>. The single argument form retrieves the value of
+L<Module Options>.  The single argument form retrieves the value of
 an option:
 
 	my $CP = Win32::OLE->Option('CP');
@@ -238,14 +238,14 @@ A single call can be used to set multiple options simultaneously:
 =item Win32::OLE->QueryObjectType(OBJECT)
 
 The QueryObjectType() class method returns a list of the type library
-name and the objects class name. In a scalar context it returns the
-class name only. It returns C<undef> when the type information is not
+name and the objects class name.  In a scalar context it returns the
+class name only.  It returns C<undef> when the type information is not
 available.
 
 =item OBJECT->SetProperty(NAME,ARGS,VALUE)
 
 The SetProperty() method allows to modify properties with arguments,
-which is not supported by the hash syntax. The hash form
+which is not supported by the hash syntax.  The hash form
 
 	$Object->{Property} = $Value;
 
@@ -268,27 +268,28 @@ The native method will still be available through the Invoke() method:
 =item Win32::OLE->SpinMessageLoop
 
 This class method retrieves all pending messages from the message queue
-and dispatches them to their respective window procedures. Calling this
+and dispatches them to their respective window procedures.  Calling this
 method is only necessary when not using the COINIT_MULTITHREADED model.
 All OLE method calls and property accesses automatically process the
 message queue.
 
 =item Win32::OLE->Uninitialize
 
-The Uninitialize() class method uninitializes the OLE subsystem. It
+The Uninitialize() class method uninitializes the OLE subsystem.  It
 also destroys the hidden top level window created by OLE for single
-threaded apartments. All OLE objects will become invalid after this call!
+threaded apartments.  All OLE objects will become invalid after this call!
 It is possible to call the Initialize() class method again with a different
 apartment model after shutting down OLE with Uninitialize().
 
 =item Win32::OLE->WithEvents(OBJECT[, HANDLER[, INTERFACE]])
 
-This class method enables and disables the firing of events by the specified
-OBJECT. If no HANDLER is specified, then events are disconnected. For some
-objects Win32::OLE is not able to automatically determine the correct event
-interface. In this case the INTERFACE argument must contain the name of the
-interface which will then be looked up in the type library.  Please read
-the L<Events> section below for detailed explanation of the Win32::OLE event
+This class method enables and disables the firing of events by the
+specified OBJECT.  If no HANDLER is specified, then events are
+disconnected.  For some objects Win32::OLE is not able to
+automatically determine the correct event interface.  In this case the
+INTERFACE argument must contain either the COCLASS name of the OBJECT
+or the name of the event DISPATCH interface.  Please read the L<Events>
+section below for detailed explanation of the Win32::OLE event
 support.
 
 =back
@@ -299,7 +300,7 @@ is dispatched to the OLE server.
 
 There is one special hack built into the module: If a method or property
 name could not be resolved with the OLE object, then the default method
-of the object is called with the method name as its first parameter. So
+of the object is called with the method name as its first parameter.  So
 
 	my $Sheet = $Worksheets->Table1;
 or
@@ -310,8 +311,8 @@ is resolved as
 	my $Sheet = $Worksheet->Item('Table1');
 
 provided that the $Worksheets object doesnot have a C<Table1> method
-or property. This hack has been introduced to call the default method
-of collections which did not name the method in their type library. The
+or property.  This hack has been introduced to call the default method
+of collections which did not name the method in their type library.  The
 recommended way to call the "unnamed" default method is:
 
 	my $Sheet = $Worksheets->Invoke('', 'Table1');
@@ -327,13 +328,13 @@ Excel documentation describes the object hierarchy along with the
 properties and methods exposed for OLE access).
 
 Optional parameters on method calls can be omitted by using C<undef>
-as a placeholder. A better way is to use named arguments, as the
+as a placeholder.  A better way is to use named arguments, as the
 order of optional parameters may change in later versions of the OLE
-server application. Named parameters can be specified in a reference
+server application.  Named parameters can be specified in a reference
 to a hash as the last parameter to a method call.
 
 Properties can be retrieved or set using hash syntax, while methods
-can be invoked with the usual perl method call syntax. The C<keys>
+can be invoked with the usual perl method call syntax.  The C<keys>
 and C<each> functions can be used to enumerate an object's properties.
 Beware that a property is not always writable or even readable (sometimes
 raising exceptions when read while being undefined).
@@ -350,8 +351,8 @@ The following functions are not exported by default.
 =item HRESULT(ERROR)
 
 The HRESULT() function converts an unsigned number into a signed HRESULT
-error value as used by OLE internally. This is necessary because Perl
-treats all hexadecimal constants as unsigned. To check if the last OLE
+error value as used by OLE internally.  This is necessary because Perl
+treats all hexadecimal constants as unsigned.  To check if the last OLE
 function returned "Member not found" (0x80020003) you can write:
 
 	if (Win32::OLE->LastError == HRESULT(0x80020003)) {
@@ -361,8 +362,8 @@ function returned "Member not found" (0x80020003) you can write:
 =item in(COLLECTION)
 
 If COLLECTION is an OLE collection object then C<in $COLLECTION>
-returns a list of all members of the collection. This is a shortcut
-for C<Win32::OLE::Enum->All($COLLECTION)>. It is most commonly used in
+returns a list of all members of the collection.  This is a shortcut
+for C<Win32::OLE::Enum->All($COLLECTION)>.  It is most commonly used in
 a C<foreach> loop:
 
 	foreach my $value (in $collection) {
@@ -372,7 +373,7 @@ a C<foreach> loop:
 =item valof(OBJECT)
 
 Normal assignment of Perl OLE objects creates just another reference
-to the OLE object. The valof() function explictly dereferences the
+to the OLE object.  The valof() function explictly dereferences the
 object (through the default method) and returns the value of the object.
 
 	my $RefOf = $Object;
@@ -398,7 +399,7 @@ C<$OBJECT->{PROPERTYNAME} = $VALUE> on each trailing pair.
 
 The Win32::OLE objects can be overloaded to automatically convert to
 their values whenever they are used in a bool, numeric or string
-context. This is not enabled by default. You have to request it
+context.  This is not enabled by default.  You have to request it
 through the OVERLOAD pseudoexport:
 
 	use Win32::OLE qw(in valof with OVERLOAD);
@@ -409,14 +410,14 @@ C<overload::StrVal()> method:
 
 	print overload::StrVal($object), "\n";
 
-Please note that C<OVERLOAD> is a global setting. If any module enables
+Please note that C<OVERLOAD> is a global setting.  If any module enables
 Win32::OLE overloading then it's active everywhere.
 
 =head2 Events
 
-The Win32::OLE module now contains B<ALPHA> level event support. This
+The Win32::OLE module now contains B<ALPHA> level event support.  This
 support is only available when Perl is running in a single threaded
-apartment. This can most easily be assured by using the C<EVENTS>
+apartment.  This can most easily be assured by using the C<EVENTS>
 pseudo-import:
 
 	use Win32::OLE qw(EVENTS);
@@ -427,20 +428,22 @@ which implicitly does something like:
 	Win32::OLE->Initialize(Win32::OLE::COINIT_OLEINITIALIZE);
 
 The current interface to OLE events should be considered experimental
-and is subject to change. It works as expected for normal OLE
+and is subject to change.  It works as expected for normal OLE
 applications, but OLE control events often don't seem to work yet.
 
 Events must be enabled explicitly for an OLE object through the
-Win32::OLE->WithEvents() class method. The Win32::OLE module uses the
-IProvideClassInfo2 interface to determine the default event source
-of the object. If this interface is not supported, then the user must
+Win32::OLE->WithEvents() class method.  The Win32::OLE module uses the
+IProvideClassInfo2 interface to determine the default event source of
+the object.  If this interface is not supported, then the user must
 specify the name of the event source explicitly in the WithEvents()
-method call.
+method call.  It is also possible to specify the class name of the
+object as the third parameter.  In this case Win32::OLE will try to
+look up the default source interface for this COCLASS.
 
 The HANDLER argument to Win32::OLE->WithEvents() can either be a CODE
 reference or a package name.  In the first case, all events will invoke
-this particular function. The first two arguments to this function will
-be the OBJECT itself and the name of the event. The remaining arguments
+this particular function.  The first two arguments to this function will
+be the OBJECT itself and the name of the event.  The remaining arguments
 will be event specific.
 
 	sub Event {
@@ -449,9 +452,9 @@ will be event specific.
 	}
 	Win32::OLE->WithEvents($Obj, \&Event);
 
-Alternatively the HANDLER argument can specify a package name. When the
+Alternatively the HANDLER argument can specify a package name.  When the
 OBJECT fires an event, Win32::OLE will try to find a function of the same
-name as the event in this package. This function will be called with the
+name as the event in this package.  This function will be called with the
 OBJECT as the first argument followed again by the event specific parameters:
 
 	package MyEvents;
@@ -466,10 +469,10 @@ OBJECT as the first argument followed again by the event specific parameters:
 If Win32::OLE doesn't find a function with the name of the event then nothing
 happens.
 
-Event parameters passed I<by reference> are handled specially. They are not
+Event parameters passed I<by reference> are handled specially.  They are not
 converted to the corresponding Perl datatype but passed as Win32::OLE::Variant
-objects. You can assign a new value to these objects with the help of the
-Put() method. This value will be passed back to the object when the event
+objects.  You can assign a new value to these objects with the help of the
+Put() method.  This value will be passed back to the object when the event
 function returns:
 
 	package MyEvents;
@@ -484,8 +487,8 @@ would therefore not command the object to abort the closing action.
 =head2 Module Options
 
 The following module options can be accessed and modified with the
-C<Win32::OLE->Option> class method. In earlier versions of the Win32::OLE
-module these options were manipulated directly as class variables. This
+C<Win32::OLE->Option> class method.  In earlier versions of the Win32::OLE
+module these options were manipulated directly as class variables.  This
 practice is now deprecated.
 
 =over 8
@@ -494,20 +497,20 @@ practice is now deprecated.
 
 This variable is used to determine the codepage used by all
 translations between Perl strings and Unicode strings used by the OLE
-interface. The default value is CP_ACP, which is the default ANSI
-codepage. Other possible values are CP_OEMCP, CP_MACCP, CP_UTF7 and
-CP_UTF8. These constants are not exported by default.
+interface.  The default value is CP_ACP, which is the default ANSI
+codepage.  Other possible values are CP_OEMCP, CP_MACCP, CP_UTF7 and
+CP_UTF8.  These constants are not exported by default.
 
 =item LCID
 
 This variable controls the locale idnetifier used for all OLE calls.
-It is set to LOCALE_NEUTRAL by default. Please check the
+It is set to LOCALE_NEUTRAL by default.  Please check the
 L<Win32::OLE::NLS> module for other locale related information.
 
 =item Warn
 
 This variable determines the behavior of the Win32::OLE module when
-an error happens. Valid values are:
+an error happens.  Valid values are:
 
 	0	Ignore error, return undef
 	1	Carp::carp if $^W is set (-w option)
@@ -558,10 +561,10 @@ Here is a simple Microsoft Excel application.
 	undef $book;
 	undef $ex;
 
-Please note the destructor specified on the Win32::OLE->new method. It ensures
-that Excel will shutdown properly even if the Perl program dies. Otherwise
+Please note the destructor specified on the Win32::OLE->new method.  It ensures
+that Excel will shutdown properly even if the Perl program dies.  Otherwise
 there could be a process leak if your application dies after having opened
-an OLE instance of Excel. It is the responsibility of the module user to
+an OLE instance of Excel.  It is the responsibility of the module user to
 make sure that all OLE objects are cleaned up properly!
 
 Here is an example of using Variant data types.
@@ -667,9 +670,9 @@ as the following example demonstrates:
 	1;
 
 This package inherits the constructor new() from the Win32::OLE
-package. It is important to note that you cannot later rebless a
+package.  It is important to note that you cannot later rebless a
 Win32::OLE object as some information about the package is cached by
-the object. Always invoke the new() constructor through the right
+the object.  Always invoke the new() constructor through the right
 package!
 
 Here's how the above class will be used:
@@ -695,55 +698,55 @@ C<$Excel> object.
 =item Documentation
 
 The object model for the Office applications is defined in the Visual Basic
-reference guides for the various applications. These are typically not
-installed by default during the standard installation. They can be added
+reference guides for the various applications.  These are typically not
+installed by default during the standard installation.  They can be added
 later by rerunning the setup program with the custom install option.
 
 =item Class, Method and Property names
 
-The names have been changed between different versions of Office. For
+The names have been changed between different versions of Office.  For
 example C<Application> was a method in Office 95 and is a property in
-Office97. Therefore it will not show up in the list of property names
+Office97.  Therefore it will not show up in the list of property names
 C<keys %$object> when querying an Office 95 object.
 
 The class names are not always identical to the method/property names
-producing the object. E.g. the C<Workbook> method returns an object of
+producing the object.  E.g. the C<Workbook> method returns an object of
 type C<Workbook> in Office 95 and C<_Workbook> in Office 97.
 
 =item Moniker (GetObject support)
 
-Office applications seem to implement file monikers only. For example
+Office applications seem to implement file monikers only.  For example
 it seems to be impossible to retrieve a specific worksheet object through
-C<GetObject("File.XLS!Sheet")>. Furthermore, in Excel 95 the moniker starts
-a Worksheet object and in Excel 97 it returns a Workbook object. You can use
+C<GetObject("File.XLS!Sheet")>.  Furthermore, in Excel 95 the moniker starts
+a Worksheet object and in Excel 97 it returns a Workbook object.  You can use
 either the Win32::OLE::QueryObjectType class method or the $object->{Version}
 property to write portable code.
 
 =item Enumeration of collection objects
 
-Enumerations seem to be incompletely implemented. Office 95 application don't
-seem to support neither the Reset() nor the Clone() methods. The Clone()
-method is still unimplemented in Office 97. A single walk through the
+Enumerations seem to be incompletely implemented.  Office 95 application don't
+seem to support neither the Reset() nor the Clone() methods.  The Clone()
+method is still unimplemented in Office 97.  A single walk through the
 collection similar to Visual Basics C<for each> construct does work however.
 
 =item Localization
 
 Starting with Office 97 Microsoft has changed the localized class, method and
-property names back into English. Note that string, date and currency
-arguments are still subject to locale specific interpretation. Perl uses the
+property names back into English.  Note that string, date and currency
+arguments are still subject to locale specific interpretation.  Perl uses the
 system default locale for all OLE transaction whereas Visual Basic uses a
-type library specific locale. A Visual Basic script would use "R1C1" in string
-arguments to specify relative references. A Perl script running on a German
-language Windows would have to use "Z1S1". Set the LCID module option
-to an English locale to write portable scripts. This variable should
+type library specific locale.  A Visual Basic script would use "R1C1" in string
+arguments to specify relative references.  A Perl script running on a German
+language Windows would have to use "Z1S1".  Set the LCID module option
+to an English locale to write portable scripts.  This variable should
 not be changed after creating the OLE objects; some methods seem to randomly
 fail if the locale is changed on the fly.
 
 =item SaveAs method in Word 97 doesn't work
 
-This is an known bug in Word 97. Search the MS knowledge base for Word /
-Foxpro incompatibility. That problem applies to the Perl OLE interface as
-well. A workaround is to use the WordBasic compatibility object. It doesn't
+This is an known bug in Word 97.  Search the MS knowledge base for Word /
+Foxpro incompatibility.  That problem applies to the Perl OLE interface as
+well.  A workaround is to use the WordBasic compatibility object.  It doesn't
 support all the options of the native method though.
 
     $Word->WordBasic->FileSaveAs($file);
@@ -753,7 +756,7 @@ The problem seems to be fixed by applying the Office 97 Service Release 1.
 =item Randomly failing method calls
 
 It seems like modifying objects that are not selected/activated is sometimes
-fragile. Most of these problems go away if the chart/sheet/document is
+fragile.  Most of these problems go away if the chart/sheet/document is
 selected or activated before being manipulated (just like an interactive
 user would automatically do it).
 
@@ -791,7 +794,7 @@ all the VT_XXX type constants.
 =item 5
 
 The support for collection objects has been moved into the package
-Win32::OLE::Enum. The C<keys %$object> method is now used to enumerate
+Win32::OLE::Enum.  The C<keys %$object> method is now used to enumerate
 the properties of the object.
 
 =back
@@ -832,12 +835,12 @@ Gurusamy Sarathy <gsar@activestate.com> subsequently fixed several
 major bugs, memory leaks, and reliability problems, along with some
 redesign of the code.
 
-Jan Dubois <jan.dubois@ibm.net> pitched in with yet more massive redesign,
+Jan Dubois <jand@activestate.com> pitched in with yet more massive redesign,
 added support for named parameters, and other significant enhancements.
 He's been hacking on it ever since.
 
 Please send questions about problems with this module to the
-Perl-Win32-Users mailinglist at ActiveState.com. The mailinglist charter
+Perl-Win32-Users mailinglist at ActiveState.com.  The mailinglist charter
 requests that you put an [OLE] tag somewhere on the subject line (for OLE
 related questions only, of course).
 
@@ -848,13 +851,13 @@ related questions only, of course).
     ActiveState Tool Corp., http://www.ActiveState.com
 
     Other modifications Copyright (c) 1997-1999 by Gurusamy Sarathy
-    <gsar@activestate.com> and Jan Dubois <jan.dubois@ibm.net>
+    <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
 
     You may distribute under the terms of either the GNU General Public
     License or the Artistic License, as specified in the README file.
 
 =head1 VERSION
 
-Version 0.1009	  4 May 1999
+Version 0.1012	  24 September 1999
 
 =cut

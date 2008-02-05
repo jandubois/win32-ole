@@ -435,7 +435,7 @@ in the OLENLS.DLL.
 
 =item CompareString(LCID,FLAGS,STR1,STR2)
 
-Compare STR1 and STR2 in the LCID locale. FLAGS indicate the character
+Compare STR1 and STR2 in the LCID locale.  FLAGS indicate the character
 traits to be used or ignored when comparing the two strings.
 
 	NORM_IGNORECASE		Ignore case
@@ -479,7 +479,7 @@ The return value is the translated string.
 
 =item GetLocaleInfo(LCID,LCTYPE)
 
-Retrieve locale setting LCTYPE from the locale specified by LCID. Use
+Retrieve locale setting LCTYPE from the locale specified by LCID.  Use
 LOCALE_NOUSEROVERRIDE | LCTYPE to always query the locale database.
 Otherwise user changes to C<win.ini> through the windows control panel
 take precedence when retrieving values for the system default locale.
@@ -566,7 +566,7 @@ Sends a WM_SETTINGCHANGE message to all top level windows.
 =item SetLocaleInfo(LCID, LCTYPE, LCDATA)
 
 Changes an item in the user override part of the locale setting LCID.
-It doesn't change the system default database. The following LCTYPEs are
+It doesn't change the system default database.  The following LCTYPEs are
 changeable:
 
 	LOCALE_ICALENDARTYPE	LOCALE_SDATE
@@ -629,8 +629,8 @@ The ISO Standard 639 English name of the language.
 
 =item LOCALE_SABBREVLANGNAME
 
-The three-letter abbreviated name of the language. The first two
-letters are from the ISO Standard 639 language name abbreviation. The
+The three-letter abbreviated name of the language.  The first two
+letters are from the ISO Standard 639 language name abbreviation.  The
 third letter indicates the sublanguage type.
 
 =item LOCALE_SNATIVELANGNAME
@@ -668,7 +668,7 @@ Country code for the principal country in this locale.
 
 =item LOCALE_IDEFAULTANSICODEPAGE
 
-The ANSI code page associated with this locale. Format: 4 Unicode
+The ANSI code page associated with this locale.  Format: 4 Unicode
 decimal digits plus a Unicode null terminator.
 
 XXX This should be translated by GetLocaleInfo. XXX
@@ -698,9 +698,9 @@ Characters used as the separator between groups of digits left of the decimal.
 
 =item LOCALE_SGROUPING
 
-Sizes for each group of digits to the left of the decimal. An explicit
-size is required for each group. Sizes are separated by semicolons. If
-the last value is 0, the preceding value is repeated. To group
+Sizes for each group of digits to the left of the decimal.  An explicit
+size is required for each group.  Sizes are separated by semicolons.  If
+the last value is 0, the preceding value is repeated.  To group
 thousands, specify 3;0.
 
 =item LOCALE_IDIGITS
@@ -709,7 +709,7 @@ The number of fractional digits.
 
 =item LOCALE_ILZERO
 
-Whether to use leading zeros in decimal fields. A setting of 0
+Whether to use leading zeros in decimal fields.  A setting of 0
 means use no leading zeros; 1 means use leading zeros.
 
 =item LOCALE_SNATIVEDIGITS
@@ -747,10 +747,10 @@ the decimal.
 
 =item LOCALE_SMONGROUPING
 
-Sizes for each group of monetary digits to the left of the decimal. An
-explicit size is needed for each group. Sizes are separated by
-semicolons. If the last value is 0, the preceding value is
-repeated. To group thousands, specify 3;0.
+Sizes for each group of monetary digits to the left of the decimal.  An
+explicit size is needed for each group.  Sizes are separated by
+semicolons.  If the last value is 0, the preceding value is
+repeated.  To group thousands, specify 3;0.
 
 =item LOCALE_ICURRDIGITS
 
@@ -797,8 +797,8 @@ The type of calendar currently in use.
 
 =item LOCALE_IOPTIONALCALENDAR
 
-The additional calendar types available for this LCID. Can be a
-null-separated list of all valid optional calendars. Value is
+The additional calendar types available for this LCID.  Can be a
+null-separated list of all valid optional calendars.  Value is
 0 for "None available" or any of the LOCALE_ICALENDARTYPE settings.
 
 XXX null separated list should be translated by GetLocaleInfo XXX
@@ -833,7 +833,7 @@ Short Date format-ordering specifier.
 
 =item LOCALE_ILDATE
 
-Long Date format ordering specifier. Value can be any of the valid
+Long Date format ordering specifier.  Value can be any of the valid
 LOCALE_IDATE settings.
 
 =item LOCALE_ITIME
@@ -866,12 +866,12 @@ Whether to use leading zeros in time fields.
 
 =item LOCALE_IDAYLZERO
 
-Whether to use leading zeros in day fields. Values as for
+Whether to use leading zeros in day fields.  Values as for
 LOCALE_ITLZERO.
 
 =item LOCALE_IMONLZERO
 
-Whether to use leading zeros in month fields. Values as for
+Whether to use leading zeros in month fields.  Values as for
 LOCALE_ITLZERO.
 
 =item LOCALE_S1159
@@ -892,7 +892,7 @@ Specifies which week of the year is considered first.
 
 =item LOCALE_IFIRSTDAYOFWEEK
 
-Specifies the day considered first in the week. Value "0" means
+Specifies the day considered first in the week.  Value "0" means
 SDAYNAME1 and value "6" means SDAYNAME7.
 
 =item LOCALE_SDAYNAME1 .. LOCALE_SDAYNAME7
@@ -939,25 +939,25 @@ Formatting index for positive values.
 
 =item LOCALE_INEGSIGNPOSN
 
-Formatting index for negative values. Values as for LOCALE_IPOSSIGNPOSN.
+Formatting index for negative values.  Values as for LOCALE_IPOSSIGNPOSN.
 
 =item LOCALE_IPOSSYMPRECEDES
 
-If the monetary symbol precedes, 1. If it succeeds a positive amount, 0.
+If the monetary symbol precedes, 1.  If it succeeds a positive amount, 0.
 
 =item LOCALE_IPOSSEPBYSPACE
 
 If the monetary symbol is separated by a space from a positive amount,
-1. Otherwise, 0.
+1.  Otherwise, 0.
 
 =item LOCALE_INEGSYMPRECEDES
 
-If the monetary symbol precedes, 1. If it succeeds a negative amount, 0.
+If the monetary symbol precedes, 1.  If it succeeds a negative amount, 0.
 
 =item LOCALE_INEGSEPBYSPACE
 
 If the monetary symbol is separated by a space from a negative amount,
-1. Otherwise, 0.
+1.  Otherwise, 0.
 
 =back
 

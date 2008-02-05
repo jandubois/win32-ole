@@ -5,7 +5,7 @@
  *  ActiveState Tool Corp., http://www.ActiveState.com
  *
  *  Other modifications Copyright (c) 1997-1999 by Gurusamy Sarathy
- *  <gsar@activestate.com> and Jan Dubois <jan.dubois@ibm.net>
+ *  <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
  *
  *  You may distribute under the terms of either the GNU General Public
  *  License or the Artistic License, as specified in the README file.
@@ -24,6 +24,8 @@
  * - Package Win32::OLE::TypeInfo   Type info access
  *
  */
+
+// #define _DEBUG
 
 #define MY_VERSION "Win32::OLE(" XS_VERSION ")"
 
@@ -138,6 +140,9 @@ typedef void (STDAPICALLTYPE FNCOUNINITIALIZE)(void);
 typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
     (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
 
+typedef HWND (WINAPI FNHTMLHELP)(HWND hwndCaller, LPCSTR pszFile,
+				 UINT uCommand, DWORD dwData);
+
 typedef struct _tagOBJECTHEADER OBJECTHEADER;
 
 /* per interpreter variables */
@@ -152,6 +157,10 @@ typedef struct
     FNCOINITIALIZEEX     *pfnCoInitializeEx;
     FNCOUNINITIALIZE     *pfnCoUninitialize;
     FNCOCREATEINSTANCEEX *pfnCoCreateInstanceEx;
+
+    /* HTML Help Control loaded dynamically */
+    HINSTANCE hHHCTRL;
+    FNHTMLHELP *pfnHtmlHelp;
 
 }   PERINTERP;
 
@@ -185,6 +194,9 @@ static PERINTERP Interp;
 #define g_pfnCoInitializeEx     (INTERP->pfnCoInitializeEx)
 #define g_pfnCoUninitialize     (INTERP->pfnCoUninitialize)
 #define g_pfnCoCreateInstanceEx (INTERP->pfnCoCreateInstanceEx)
+
+#define g_hHHCTRL               (INTERP->hHHCTRL)
+#define g_pfnHtmlHelp           (INTERP->pfnHtmlHelp)
 
 /* common object header */
 typedef struct _tagOBJECTHEADER
@@ -1743,6 +1755,7 @@ IEnumVARIANT *
 CreateEnumVARIANT(CPERLarg_ WINOLEOBJECT *pObj)
 {
     unsigned int argErr;
+    EXCEPINFO excepinfo;
     DISPPARAMS dispParams;
     VARIANT result;
     HRESULT hr;
@@ -1757,9 +1770,10 @@ CreateEnumVARIANT(CPERLarg_ WINOLEOBJECT *pObj)
     HV *stash = SvSTASH(pObj->self);
     LCID lcid = QueryPkgVar(THIS_ stash, LCID_NAME, LCID_LEN, lcidDefault);
 
+    Zero(&excepinfo, 1, EXCEPINFO);
     hr = pObj->pDispatch->Invoke(DISPID_NEWENUM, IID_NULL,
 			    lcid, DISPATCH_METHOD | DISPATCH_PROPERTYGET,
-			    &dispParams, &result, NULL, &argErr);
+			    &dispParams, &result, &excepinfo, &argErr);
     if (SUCCEEDED(hr)) {
 	if (V_VT(&result) == VT_UNKNOWN)
 	    hr = V_UNKNOWN(&result)->QueryInterface(IID_IEnumVARIANT,
@@ -1769,7 +1783,7 @@ CreateEnumVARIANT(CPERLarg_ WINOLEOBJECT *pObj)
 						     (void**)&pEnum);
     }
     VariantClear(&result);
-    CheckOleError(THIS_ stash, hr);
+    CheckOleError(THIS_ stash, hr, &excepinfo);
     return pEnum;
 
 }   /* CreateEnumVARIANT */
@@ -2086,6 +2100,7 @@ Forwarder::GetIDsOfNames(
     LCID lcid,
     DISPID *rgdispid)
 {
+    DBG(("Forwarder::GetIDsOfNames cNames=%d\n", cNames));
     // XXX Set all DISPIDs to DISPID_UNKNOWN
     return DISP_E_UNKNOWNNAME;
 }
@@ -3037,6 +3052,8 @@ AtExit(CPERLarg_ void *pVoid)
     DeleteCriticalSection(&g_CriticalSection);
     if (g_hOLE32)
 	FreeLibrary(g_hOLE32);
+    if (g_hHHCTRL)
+	FreeLibrary(g_hHHCTRL);
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
     Safefree(pInterp);
 #endif
@@ -3077,6 +3094,9 @@ Bootstrap(CPERLarg)
 	g_pfnCoCreateInstanceEx = (FNCOCREATEINSTANCEEX*)
 	    GetProcAddress(g_hOLE32, "CoCreateInstanceEx");
     }
+
+    g_hHHCTRL = NULL;
+    g_pfnHtmlHelp = NULL;
 
     SV *cmd = newSVpv("", 0);
     sv_setpvf(cmd, "END { %s->Uninitialize(%d); }", szWINOLE, WINOLE_MAGIC );
@@ -3343,6 +3363,7 @@ PPCODE:
     int index, arrayIndex;
     I32 len;
     WINOLEOBJECT *pObj;
+    EXCEPINFO excepinfo;
     DISPID dispID = DISPID_VALUE;
     DISPID dispIDParam = DISPID_PROPERTYPUT;
     USHORT wFlags = DISPATCH_METHOD | DISPATCH_PROPERTYGET;
@@ -3355,6 +3376,7 @@ PPCODE:
     HRESULT hr = S_OK;
 
     ST(0) = &PL_sv_no;
+    Zero(&excepinfo, 1, EXCEPINFO);
     VariantInit(&result);
 
     if (!sv_isobject(self)) {
@@ -3503,7 +3525,7 @@ PPCODE:
     }
 
     hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
-				  &dispParams, &result, NULL, &argErr);
+				  &dispParams, &result, &excepinfo, &argErr);
     if (FAILED(hr)) {
 	/* mega kludge. if a method in WORD is called and we ask
 	 * for a result when one is not returned then
@@ -3511,8 +3533,9 @@ PPCODE:
 	 * functions whose DISPID > 0x8000 */
 
 	if (hr == DISP_E_EXCEPTION && dispID > 0x8000) {
+	    Zero(&excepinfo, 1, EXCEPINFO);
 	    hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
-				  &dispParams, NULL, NULL, &argErr);
+				  &dispParams, NULL, &excepinfo, &argErr);
 	}
     }
 
@@ -3534,6 +3557,10 @@ PPCODE:
 	}
     }
     else {
+	/* use more specific error code from exception when available */
+	if (hr == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
+	    hr = excepinfo.scode;
+
 	char *pszDelim = "";
 	err = sv_newmortal();
 	sv_setpvf(err, "in ");
@@ -3575,7 +3602,7 @@ PPCODE:
     if (dispParams.rgdispidNamedArgs != &dispIDParam)
 	Safefree(dispParams.rgdispidNamedArgs);
 
-    CheckOleError(THIS_ stash, hr, NULL, err);
+    CheckOleError(THIS_ stash, hr, &excepinfo, err);
 
     XSRETURN(1);
 }
@@ -4127,6 +4154,7 @@ PPCODE:
     char *buffer;
     STRLEN length;
     unsigned int argErr;
+    EXCEPINFO excepinfo;
     DISPPARAMS dispParams;
     VARIANT result;
     VARIANTARG propName;
@@ -4175,16 +4203,18 @@ PPCODE:
 	dispParams.rgvarg = &propName;
     }
 
+    Zero(&excepinfo, 1, EXCEPINFO);
+
     hr = pObj->pDispatch->Invoke(dispID, IID_NULL,
 		    lcid, DISPATCH_METHOD | DISPATCH_PROPERTYGET,
-		    &dispParams, &result, NULL, &argErr);
+		    &dispParams, &result, &excepinfo, &argErr);
     VariantClear(&propName);
 
     if (FAILED(hr)) {
 	SV *sv = sv_newmortal();
 	sv_setpvf(sv, "in METHOD/PROPERTYGET \"%s\"", buffer);
 	VariantClear(&result);
-	ReportOleError(THIS_ stash, hr, NULL, sv);
+	ReportOleError(THIS_ stash, hr, &excepinfo, sv);
     }
     else {
 	ST(0) = sv_newmortal();
@@ -4209,6 +4239,7 @@ PPCODE:
     char *buffer;
     int index;
     HRESULT hr;
+    EXCEPINFO excepinfo;
     DISPID dispID = DISPID_VALUE;
     DISPID dispIDParam = DISPID_PROPERTYPUT;
     DISPPARAMS dispParams;
@@ -4232,6 +4263,7 @@ PPCODE:
 
     VariantInit(&propertyValue[0]);
     VariantInit(&propertyValue[1]);
+    Zero(&excepinfo, 1, EXCEPINFO);
 
     buffer = SvPV(key, length);
     hr = GetHashedDispID(THIS_ pObj, buffer, length, dispID, lcid, cp);
@@ -4257,7 +4289,7 @@ PPCODE:
 	    wFlags = DISPATCH_PROPERTYPUTREF;
 
 	hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
-				      &dispParams, NULL, NULL, &argErr);
+				      &dispParams, NULL, &excepinfo, &argErr);
 	if (FAILED(hr)) {
 	    err = sv_newmortal();
 	    sv_setpvf(err, "in PROPERTYPUT%s \"%s\"",
@@ -4268,7 +4300,7 @@ PPCODE:
     for(index = 0; index < dispParams.cArgs; ++index)
 	VariantClear(&propertyValue[index]);
 
-    if (CheckOleError(THIS_ stash, hr, NULL, err))
+    if (CheckOleError(THIS_ stash, hr, &excepinfo, err))
 	XSRETURN_EMPTY;
 
     XSRETURN_YES;
@@ -4565,6 +4597,33 @@ PPCODE:
 
     ST(0) = sv_2mortal(newRV_noinc((SV*)res));
     XSRETURN(1);
+}
+
+void
+_ShowHelpContext(helpfile,context)
+    char *helpfile
+    IV context
+PPCODE:
+{
+    HWND hwnd;
+    dPERINTERP;
+
+    if (!g_hHHCTRL) {
+	g_hHHCTRL = LoadLibrary("HHCTRL.OCX");
+	if (g_hHHCTRL)
+	    g_pfnHtmlHelp = (FNHTMLHELP*)GetProcAddress(g_hHHCTRL, "HtmlHelpA");
+    }
+
+    if (!g_pfnHtmlHelp) {
+	warn(MY_VERSION ": HtmlHelp control unavailable");
+	XSRETURN_EMPTY;
+    }
+
+    // HH_HELP_CONTEXT 0x0F: display mapped numeric value in dwData
+    hwnd = g_pfnHtmlHelp(GetDesktopWindow(), helpfile, 0x0f, (DWORD)context);
+
+    if (hwnd == 0 && context == 0) // try HH_DISPLAY_TOPIC 0x0
+	g_pfnHtmlHelp(GetDesktopWindow(), helpfile, 0, (DWORD)context);
 }
 
 ##############################################################################

@@ -3,11 +3,28 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.11    libwin32-0.15 / ActivePerl build 520
+	- reorganization of Win32::OLE::Type* packages
+	- Win32::OLE::Const now uses Win32::OLE::Type* packages
+	- Win32::OLE::Const now uses LoadTypeLibEx to avoid registering
+	  type libraries accidendly
+	- Win32::OLE::Const: EnumTypeLibs() and LoadRegTypeLib() methods
+	- new DHTML typelib browser
+	- new Win32::OLE::GetTypeInfo() method
+	- WithEvents() supports COCLASS name as 3rd arg
+	- Forwarder objects
+
+0.1010  (unreleased)
+	- support $obj = CreateObject Win32::OLE 'My.App';
+	- event dispatch by dispid instead of by name
+	  (for controls not providing type information)
+	- allow "empty" Variant(VT_DISPATCH)
+	- misc fixes for VT_BYREF Variants
+
 0.1009	(unreleased)
 	- Additional Variant overloads: Add, Sub, Mul, Div
 	- some additional variant conversion error checking
 	- VT_DECIMAL support
-	- support $obj = CreateObject Win32::OLE 'My.App';
 
 0.1008	ActivePerl 517
 	- new LetProperty() method
