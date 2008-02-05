@@ -22,7 +22,12 @@
  *
  */
 
-#define MY_VERSION "Win32::OLE-" XS_VERSION
+#ifdef XS_VERSION
+#   define MY_VERSION "Win32::OLE-" XS_VERSION
+#else
+#   define MY_VERSION "Win32::OLE-?.??"
+#endif
+
 
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #include <windows.h>
@@ -32,10 +37,10 @@
 #include <objbase.h>
 
 #ifdef _DEBUG
-    #include <crtdbg.h>
-    #define DEBUGBREAK _CrtDbgBreak()
+#   include <crtdbg.h>
+#   define DEBUGBREAK _CrtDbgBreak()
 #else
-    #define DEBUGBREAK
+#   define DEBUGBREAK
 #endif
 
 #if defined(__cplusplus)
@@ -46,6 +51,10 @@ extern "C" {
 #include "perl.h"
 #include "XSub.h"
 #include "patchlevel.h"
+
+#if (PATCHLEVEL < 4) || ((PATCHLEVEL == 4) && (SUBVERSION < 1))
+#    error Win32::OLE module requires Perl 5.004_01 or later
+#endif
 
 #if !defined(_DEBUG)
 #    define DBG(a)
@@ -146,10 +155,43 @@ typedef struct
 
 }   WINOLEVARIANTOBJECT;
 
-/* global variables */
-static BOOL g_bInitialized = FALSE;
-static CRITICAL_SECTION g_CriticalSection;
-static OBJECTHEADER *g_pObj = NULL;
+
+/* per interpreter variables */
+typedef struct
+{
+    CRITICAL_SECTION CriticalSection;
+    OBJECTHEADER *pObj;
+    BOOL bInitialized;
+
+}   PERINTERP;
+
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+#    if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+#       define MODGLOBAL "Win32::OLE::__MODGLOBAL__"
+#	define dPERINTERP                                                      \
+	   PERINTERP *pInterp = (PERINTERP*)SvIV(perl_get_sv(MODGLOBAL, FALSE))
+#    else
+#	define dPERINTERP                                                      \
+           SV **psvInterp = hv_fetch(modglobal, szWINOLE,                      \
+                                     sizeof(szWINOLE)-1, FALSE);               \
+	   PERINTERP *pInterp = (PERINTERP*)SvIV(*psvInterp)
+#   endif
+#   define INTERP pInterp
+#   define g_pObj (pInterp->pObj)
+#   define g_bInitialized (pInterp->bInitialized)
+#   define g_CriticalSection (pInterp->CriticalSection)
+#else
+static PERINTERP Interp;
+#   define dPERINTERP extern int errno
+#   define INTERP (&Interp)
+#   define g_pObj (Interp.pObj)
+#   define g_bInitialized (Interp.bInitialized)
+#   define g_CriticalSection (Interp.CriticalSection)
+#endif
+
+/* forward declarations */
+HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
+
 
 /* The following function from IO.xs is in the core starting with 5.004_63 */
 #if (PATCHLEVEL == 4) && (SUBVERSION < 63)
@@ -183,8 +225,86 @@ newCONSTSUB(HV *stash, char *name, SV *sv)
 }
 #endif
 
-/* forward declarations */
-HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
+BOOL
+IsLocalMachine(char *pszMachine)
+{
+    char szComputerName[MAX_COMPUTERNAME_LENGTH+1];
+    DWORD dwSize = sizeof(szComputerName);
+    char *pszName = pszMachine;
+
+    while (*pszName == '\\')
+	++pszName;
+
+    if (*pszName == '\0')
+	return TRUE;
+
+    /* Check against local computer name (from registry) */
+    if (GetComputerName(szComputerName, &dwSize)
+	&& stricmp(pszName, szComputerName) == 0)
+	return TRUE;
+
+    /* gethostname(), gethostbyname() and inet_addr() all call proxy functions
+     * in the Perl socket layer wrapper in win32sck.c. Therefore calling
+     * WSAStartup() here is not necessary.
+     */
+
+    /* Determine main host name of local machine */
+    char szBuffer[200];
+    if (gethostname(szBuffer, sizeof(szBuffer)) != 0)
+	return FALSE;
+
+    /* Copy list of addresses for local machine */
+    struct hostent *pHostEnt = gethostbyname(szBuffer);
+    if (pHostEnt == NULL)
+	return FALSE;
+
+    if (pHostEnt->h_addrtype != PF_INET || pHostEnt->h_length != 4) {
+	warn(MY_VERSION ": IsLocalMachine() gethostbyname failure");
+	return FALSE;
+    }
+
+    int count = 0;
+    char *pLocal;
+    while (pHostEnt->h_addr_list[count] != NULL)
+	++count;
+
+    New(0, pLocal, 4*count, char);
+    for (int index = 0 ; index < count ; ++index)
+	memcpy(pLocal+4*index, pHostEnt->h_addr_list[index], 4);
+
+    /* Determine addresses of remote machine */
+    unsigned long ulRemoteAddr;
+    char *pRemote[2] = {NULL, NULL};
+    char **ppRemote = &pRemote[0];
+
+    if (isdigit(*pszMachine)) {
+	/* Convert dotted address list */
+	ulRemoteAddr = inet_addr(pszMachine);
+	if (ulRemoteAddr != INADDR_NONE)
+	    pRemote[0] = (char*)&ulRemoteAddr;
+    }
+    else {
+	/* Get addresses for remote host name */
+	pHostEnt = gethostbyname(pszMachine);
+	if (pHostEnt != NULL)
+	    if (pHostEnt->h_addrtype == PF_INET && pHostEnt->h_length == 4)
+		ppRemote = pHostEnt->h_addr_list;
+    }
+
+    /* Compare list of addresses of remote machine against local addresses */
+    while (ppRemote != NULL) {
+	for (index = 0 ; index < count ; ++index)
+	    if (memcmp(pLocal+4*index, *ppRemote, 4) == 0) {
+		Safefree(pLocal);
+		return TRUE;
+	    }
+	++ppRemote;
+    }
+
+    Safefree(pLocal);
+    return FALSE;
+
+}   /* IsLocalMachine */
 
 HRESULT
 CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
@@ -195,7 +315,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     HRESULT res = S_OK;
 
     err = RegConnectRegistry(pszHost, HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
-    if (err != ERROR_SUCCESS) 
+    if (err != ERROR_SUCCESS)
 	return HRESULT_FROM_WIN32(err);
 
     SV *subkey = newSVpv("SOFTWARE\\Classes\\", 0);
@@ -204,21 +324,21 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
 
     err = RegOpenKeyEx(hKeyLocalMachine, SvPV(subkey, na), 0, KEY_READ,
 		       &hKeyProgID);
-    if (err != ERROR_SUCCESS) 
+    if (err != ERROR_SUCCESS)
 	res = HRESULT_FROM_WIN32(err);
     else {
 	DWORD dwType;
 	char szCLSID[100];
 	DWORD dwLength = sizeof(szCLSID);
 
-	err = RegQueryValueEx(hKeyProgID, "", NULL, &dwType, 
+	err = RegQueryValueEx(hKeyProgID, "", NULL, &dwType,
 			      (unsigned char*)&szCLSID, &dwLength);
 	if (err != ERROR_SUCCESS)
 	    res = HRESULT_FROM_WIN32(err);
 	else if (dwType == REG_SZ) {
 	    OLECHAR wszCLSID[sizeof(szCLSID)];
 
-	    MultiByteToWideChar(CP_ACP, 0, szCLSID, -1, 
+	    MultiByteToWideChar(CP_ACP, 0, szCLSID, -1,
 				wszCLSID, sizeof(szCLSID));
 	    res = CLSIDFromString(wszCLSID, pCLSID);
 	}
@@ -227,7 +347,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
 
 	RegCloseKey(hKeyProgID);
     }
-    
+
     SvREFCNT_dec(subkey);
     RegCloseKey(hKeyLocalMachine);
     return res;
@@ -504,6 +624,8 @@ CheckDestroyFunction(SV *sv, char *szMethod)
 void
 AddToObjectChain(OBJECTHEADER *pHeader, long lMagic)
 {
+    dPERINTERP;
+
     EnterCriticalSection(&g_CriticalSection);
     pHeader->lMagic = lMagic;
     pHeader->pPrevious = NULL;
@@ -519,6 +641,8 @@ RemoveFromObjectChain(OBJECTHEADER *pHeader)
 {
     if (pHeader == NULL)
 	return;
+
+    dPERINTERP;
 
     EnterCriticalSection(&g_CriticalSection);
     if (pHeader->pPrevious == NULL) {
@@ -573,7 +697,7 @@ CreatePerlObject(HV *stash, IDispatch *pDispatch, SV *destroy)
 
     AddToObjectChain(&pObj->header, WINOLE_MAGIC);
 
-    DBG(("CreatePerlObject = |%lx| Class = %s Tie = %s\n", pObj, 
+    DBG(("CreatePerlObject = |%lx| Class = %s Tie = %s\n", pObj,
 	 HvNAME(stash), szTie));
 
     hv_store(hvinner, PERL_OLE_ID, PERL_OLE_IDLEN, newSViv((long)pObj), 0);
@@ -1177,7 +1301,7 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
     sv_setsv(sv, &sv_undef);
 
     if (V_ISARRAY(pVariant)) {
-	SAFEARRAY *psa = V_ISBYREF(pVariant) ? *V_ARRAYREF(pVariant) 
+	SAFEARRAY *psa = V_ISBYREF(pVariant) ? *V_ARRAYREF(pVariant)
 	                                     : V_ARRAY(pVariant);
 	AV **pav;
 	IV index;
@@ -1392,6 +1516,8 @@ SpinMessageLoop(void)
 void
 Initialize(void)
 {
+    dPERINTERP;
+
     DBG(("Initialize\n"));
     EnterCriticalSection(&g_CriticalSection);
     if (!g_bInitialized) {
@@ -1403,8 +1529,11 @@ Initialize(void)
 }
 
 void
-Uninitialize(void)
+Uninitialize(PERINTERP *pInterp, int magic)
 {
+    /* This function is called during Perl interpreter cleanup after all objects
+     * have already been destroyed. Do NOT access Perl data structures! */
+
     DBG(("Uninitialize\n"));
     EnterCriticalSection(&g_CriticalSection);
     if (g_bInitialized) {
@@ -1449,29 +1578,48 @@ Uninitialize(void)
 	g_bInitialized = FALSE;
     }
     LeaveCriticalSection(&g_CriticalSection);
+
+    if (magic == WINOLE_MAGIC) {
+	DeleteCriticalSection(&g_CriticalSection);
+	DBG(("Interpreter exit\n"));
+    }
 }
 
-BOOL APIENTRY
-#ifdef __BORLANDC__
-DllEntryPoint
-#else
-DllMain
-#endif
-(HANDLE hModule, DWORD fdwReason, LPVOID lpvReserved)
+static void
+AtExit(void *pVoid)
 {
-    switch (fdwReason) {
-    case DLL_PROCESS_ATTACH:
-	InitializeCriticalSection(&g_CriticalSection);
-	break;
+    Uninitialize((PERINTERP*)pVoid, WINOLE_MAGIC);
+    DBG(("AtExit done\n"));
+}
 
-    case DLL_PROCESS_DETACH:
-	DeleteCriticalSection(&g_CriticalSection);
-	break;
-    }
+static void
+Bootstrap(void)
+{
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+    PERINTERP *pInterp;
+    New(0, pInterp, 1, PERINTERP);
 
-    return TRUE;
+#   if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+    sv_setiv(perl_get_sv(MODGLOBAL, TRUE), (IV)pInterp);
+#   else
+    hv_store(modglobal, szWINOLE, sizeof(szWINOLE)-1,
+	     newSViv((IV)pInterp), 0);
+#   endif
 
-}   /* DllMain/DllEntryPoint */
+#endif
+
+#if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+    SV *cmd = sv_2mortal(newSVpv("",0));
+    sv_setpvf(cmd, "END { %s->Uninitialize(%d); }", szWINOLE, WINOLE_MAGIC );
+    perl_eval_sv(cmd, TRUE);
+#else
+    perl_atexit(AtExit, INTERP);
+#endif
+
+    g_pObj = NULL;
+    g_bInitialized = FALSE;
+    InitializeCriticalSection(&g_CriticalSection);
+}
 
 BOOL
 CallObjectMethod(SV **mark, I32 ax, I32 items, char *pszMethod)
@@ -1537,6 +1685,9 @@ MODULE = Win32::OLE		PACKAGE = Win32::OLE
 
 PROTOTYPES: DISABLE
 
+BOOT:
+    Bootstrap();
+
 void
 Initialize(...)
 ALIAS:
@@ -1551,14 +1702,28 @@ PPCODE:
 
     DBG(("Win32::OLE->%s()\n", paszMethod[ix]));
 
-    if (items != 1)
+    if (items != 1 && ix != 1)
 	warn("Usage: Win32::OLE->%s()", paszMethod[ix]);
 
     switch (ix)
     {
-    case 0: Initialize();      break;
-    case 1: Uninitialize();    break;
-    case 2: SpinMessageLoop(); break;
+    case 0:
+	Initialize();
+	break;
+    case 1:
+    {
+	int magic = 0;
+	dPERINTERP;
+
+	if (items > 1 && SvOK(ST(1)))
+	    magic = SvIV(ST(1));
+
+	Uninitialize(INTERP, magic);
+	break;
+    }
+    case 2:
+	SpinMessageLoop();
+	break;
     }
 
     XSRETURN_UNDEF;
@@ -1606,7 +1771,7 @@ PPCODE:
 	    res = CLSIDFromString(pBuffer, &clsid);
 	ReleaseBuffer(pBuffer, Buffer);
 	if (SUCCEEDED(res)) {
-	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER, 
+	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
 				   IID_IDispatch, (void**)&pDispatch);
 	}
 	if (!CheckOleError(stash, res)) {
@@ -1640,36 +1805,21 @@ PPCODE:
 	XSRETURN(1);
     }
 
-    /* determine CLSID */
-    char *pszProgID = SvPV(progid, na);
-    char *pszHost = NULL;
 
-    /* '' (nullstring) or C<undef> go to local host */
+    /* determine hostname */
+    char *pszHost = NULL;
     if (SvPOK(host)) {
 	pszHost = SvPV(host, na);
-	if (*pszHost == '\0')
+	if (IsLocalMachine(pszHost))
 	    pszHost = NULL;
-	else {
-	    /* ignore hostname if it is the local machine name */
-	    char szComputerName [MAX_COMPUTERNAME_LENGTH+1];
-	    DWORD dwSize = sizeof(szComputerName);
-	    char *pszHostName = pszHost;
-
-	    while (*pszHostName == '\\')
-		++pszHostName;
-
-	    if (GetComputerName(szComputerName, &dwSize) && 
-		stricmp(pszHostName, szComputerName) == 0)
-	    {
-		pszHost = NULL;
-	    }
-	}
     }
 
+    /* determine CLSID */
+    char *pszProgID = SvPV(progid, na);
     pBuffer = GetWideChar(pszProgID, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0])) {
 	res = CLSIDFromProgID(pBuffer, &clsid);
-	if (FAILED(res)) 
+	if (FAILED(res) && pszHost != NULL)
 	    res = CLSIDFromRemoteRegistry(pszHost, pszProgID, &clsid);
     }
     else
@@ -2471,7 +2621,7 @@ PPCODE:
 	    if (pVarDesc->varkind == VAR_CONST &&
 		!(pVarDesc->wVarFlags & (VARFLAG_FHIDDEN |
 					 VARFLAG_FRESTRICTED |
-					 VARFLAG_FNONBROWSABLE))) 
+					 VARFLAG_FNONBROWSABLE)))
 	    {
 		unsigned int cName;
 		BSTR bstr;
@@ -2876,7 +3026,7 @@ PPCODE:
 
 	SetLastOleError(stash);
 	/* XXX: Does it work with VT_BYREF? */
-	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant, 
+	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant,
 				  lcid, 0, type);
 	CheckOleError(stash, res);
     }
@@ -2911,7 +3061,7 @@ PPCODE:
 	}
 
 	if (!CheckOleError(stash, res)) {
-	    BSTR bstr = V_ISBYREF(pVariant) ? *V_BSTRREF(pVariant) 
+	    BSTR bstr = V_ISBYREF(pVariant) ? *V_BSTRREF(pVariant)
 		                            : V_BSTR(pVariant);
 	    STRLEN len = SysStringLen(bstr);
 	    SV *sv = newSVpv((char*)bstr, 2*len);
@@ -2919,7 +3069,7 @@ PPCODE:
 	    for (STRLEN i=0 ; i < len ; ++i)
 		pus[i] = htons(pus[i]);
 
-	    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), 
+	    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv),
 					gv_stashpv("Unicode::String", TRUE)));
 	}
 	VariantClear(&Variant);

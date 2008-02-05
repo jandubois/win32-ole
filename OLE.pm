@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0804';
+$VERSION = '0.0805';
 
 use Carp;
 use Exporter;
@@ -31,7 +31,6 @@ OVERLOAD
 }
 
 bootstrap Win32::OLE;
-sub END { Win32::OLE->Uninitialize(); }
 
 $Warn = 1;
 
