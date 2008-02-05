@@ -3,6 +3,19 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1401	Mon, September 11th, 2000
+	- fix bug in GetMultiByteEx() sometimes chopping off the last byte
+
+0.14	Tue, August 22th, 2000
+	- remove support for Perl 5.004 & 5.005
+	- don't built for 5.005 Threads (because it won't work anyways)
+	- make sure the other compile options for 5.6 work
+	- support embedded '\0's in BSTR return values
+
+0.1301	Thur, July 13th, 2000 (dougl@ActiveState.com)
+	- patch to fix exported functions
+	- lost UTF-8 support added back in
+
 0.13	Sat, May 6th, 2000
 	- add Win32::OLE::Variant::nothing() function
 	- fix strrev() definition for Borland
