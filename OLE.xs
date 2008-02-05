@@ -25,7 +25,7 @@
  *
  */
 
-// #define _DEBUG
+#define _DEBUG
 
 #define MY_VERSION "Win32::OLE(" XS_VERSION ")"
 
@@ -43,6 +43,14 @@
 
 #if defined (__cplusplus)
 extern "C" {
+#endif
+
+#ifdef __CYGWIN__
+#   undef WIN32			/* don't use with Cygwin & Perl */
+#   include <netdb.h>
+#   include <sys/socket.h>
+#   include <unistd.h>
+    char *_strrev(char *);	/* from string.h (msvcrt40) */
 #endif
 
 #define MIN_PERL_DEFINE
@@ -75,6 +83,10 @@ typedef unsigned short WORD;
 #   define CPERLarg_
 #   define PERL_OBJECT_THIS
 #   define PERL_OBJECT_THIS_
+#endif
+
+#ifndef pTHX_
+#   define pTHX_
 #endif
 
 #undef THIS_
@@ -451,7 +463,7 @@ SpinMessageLoop(void)
     MSG msg;
 
     DBG(("SpinMessageLoop\n"));
-    while(PeekMessage(&msg,NULL,NULL,NULL,PM_REMOVE)) {
+    while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
 	TranslateMessage(&msg);
 	DispatchMessage(&msg);
     }
@@ -768,8 +780,15 @@ ReportOleError(CPERLarg_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 {
     dSP;
 
+    SV *sv;
     IV warnlvl = QueryPkgVar(THIS_ stash, WARN_NAME, WARN_LEN);
-    SV *sv = sv_2mortal(newSV(200));
+    GV **pgv = (GV**)hv_fetch(stash, WARN_NAME, WARN_LEN, FALSE);
+    CV *cv = Nullcv;
+
+    if (pgv && (sv = GvSV(*pgv)) && SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVCV)
+	cv = (CV*)sv;
+
+    sv = sv_2mortal(newSV(200));
     SvPOK_on(sv);
 
     /* start with exception info */
@@ -860,8 +879,7 @@ ReportOleError(CPERLarg_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 
     DBG(("ReportOleError: hr=0x%08x warnlvl=%d\n%s", hr, warnlvl, SvPVX(sv)));
 
-    if (warnlvl > 1 || (warnlvl == 1 && PL_dowarn)) {
-	CV *cv;
+    if (!cv && (warnlvl > 1 || (warnlvl == 1 && PL_dowarn))) {
 	if (warnlvl < 3) {
 	    cv = perl_get_cv("Carp::carp", FALSE);
 	    if (!cv)
@@ -872,12 +890,13 @@ ReportOleError(CPERLarg_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 	    if (!cv)
 		croak(SvPVX(sv));
 	}
-	if (cv) {
-	    PUSHMARK(sp) ;
-	    XPUSHs(sv);
-	    PUTBACK;
-	    perl_call_sv((SV*)cv, G_DISCARD);
-	}
+    }
+
+    if (cv) {
+        PUSHMARK(sp) ;
+        XPUSHs(sv);
+        PUTBACK;
+        perl_call_sv((SV*)cv, G_DISCARD);
     }
 
 }   /* ReportOleError */
@@ -1096,9 +1115,6 @@ ReleasePerlObject(CPERLarg_ WINOLEOBJECT *pObj)
     }
 
     DBG(("\n"));
-
-    SpinMessageLoop();
-    CoFreeUnusedLibraries();
 
 }   /* ReleasePerlObject */
 
@@ -2822,8 +2838,27 @@ SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
     }
 
     case VT_ERROR:
-	SET(iv, ERROR);
-	break;
+    case VT_DATE:
+    {
+	SV *classname;
+	WINOLEVARIANTOBJECT *pVarObj;
+	Newz(0, pVarObj, 1, WINOLEVARIANTOBJECT);
+	VariantInit(&pVarObj->variant);
+	VariantInit(&pVarObj->byref);
+	hr = VariantCopy(&pVarObj->variant, pVariant);
+	if (FAILED(hr)) {
+	    Safefree(pVarObj);
+	    ReportOleError(THIS_ stash, hr, NULL, NULL);
+            break;
+	}
+
+	AddToObjectChain(THIS_ (OBJECTHEADER*)pVarObj, WINOLEVARIANT_MAGIC);
+	classname = newSVpv(HvNAME(stash), 0);
+	sv_catpvn(classname, "::Variant", 9);
+	sv_setref_pv(sv, SvPVX(classname), pVarObj);
+	SvREFCNT_dec(classname);
+ 	break;
+    }
 
     case VT_BOOL:
 	if (V_ISBYREF(pVariant))
@@ -2877,7 +2912,6 @@ SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	break;
     }
 
-    case VT_DATE:
     case VT_CY:
     default:
     {
@@ -3034,7 +3068,6 @@ Uninitialize(CPERLarg_ PERINTERP *pInterp)
 	    pHeader = pHeader->pNext;
 	}
 
-	SpinMessageLoop();
 	DBG(("CoUninitialize\n"));
 	if (g_pfnCoUninitialize)
 	    g_pfnCoUninitialize();
@@ -3045,7 +3078,7 @@ Uninitialize(CPERLarg_ PERINTERP *pInterp)
 }   /* Uninitialize */
 
 static void
-AtExit(CPERLarg_ void *pVoid)
+AtExit(pTHX_ CPERLarg_ void *pVoid)
 {
     PERINTERP *pInterp = (PERINTERP*)pVoid;
 
@@ -3174,9 +3207,14 @@ Initialize(...)
 ALIAS:
     Uninitialize = 1
     SpinMessageLoop = 2
+    MessageLoop = 3
+    QuitMessageLoop = 4
+    FreeUnusedLibraries = 5
 PPCODE:
 {
-    char *paszMethod[] = {"Initialize", "Uninitialize", "SpinMessageLoop"};
+    char *paszMethod[] = {"Initialize", "Uninitialize", "SpinMessageLoop",
+                          "MessageLoop", "QuitMessageLoop",
+			  "FreeUnusedLibraries"};
 
     if (CallObjectMethod(THIS_ mark, ax, items, paszMethod[ix]))
 	return;
@@ -3192,7 +3230,7 @@ PPCODE:
     SetLastOleError(THIS_ stash);
 
     switch (ix) {
-    case 0: {
+    case 0: {		// Initialize
 	DWORD dwCoInit = COINIT_MULTITHREADED;
 	if (items > 1 && SvOK(ST(1)))
 	    dwCoInit = SvIV(ST(1));
@@ -3200,13 +3238,32 @@ PPCODE:
 	Initialize(THIS_ gv_stashsv(ST(0), TRUE), dwCoInit);
 	break;
     }
-    case 1: {
+    case 1: {		// Uninitialize
 	dPERINTERP;
 	Uninitialize(THIS_ INTERP);
 	break;
     }
-    case 2:
+    case 2:		// SpinMessageLoop
 	SpinMessageLoop();
+	break;
+
+    case 3: {		// MessageLoop
+	MSG msg;
+	DBG(("MessageLoop\n"));
+	while (GetMessage(&msg, NULL, 0, 0)) {
+	    if (msg.hwnd == NULL && msg.message == WM_USER)
+		break;
+	    TranslateMessage(&msg);
+	    DispatchMessage(&msg);
+	}
+	break;
+    }
+    case 4:		// QuitMessageLoop
+	PostThreadMessage(GetCurrentThreadId(), WM_USER, 0, 0);
+	break;
+
+    case 5:		// FreeUnusedLibraries
+	CoFreeUnusedLibraries();
 	break;
     }
 
@@ -3587,7 +3644,7 @@ PPCODE:
 		sv_catpvf(err, " argument \"%s\"",
 			  hv_iterkey(rghe[argErr], &len));
 	    else
-		sv_catpvf(err, " argument %d", 1 + dispParams.cArgs - argErr);
+		sv_catpvf(err, " argument %d", dispParams.cArgs - argErr);
 	}
     }
 
@@ -4945,6 +5002,13 @@ PPCODE:
 	ST(0) = sv_newmortal();
 	hr = SetSVFromVariantEx(THIS_ &variant, ST(0), olestash);
     }
+    else if (V_VT(&pVarObj->variant) == VT_ERROR) {
+	/* special handling for VT_ERROR */
+	ST(0) = sv_newmortal();
+	V_VT(&variant) = VT_I4;
+	V_I4(&variant) = V_ERROR(&pVarObj->variant);
+	hr = SetSVFromVariantEx(THIS_ &variant, ST(0), olestash, FALSE);
+    }
     VariantClear(&variant);
     CheckOleError(THIS_ olestash, hr);
     XSRETURN(1);
@@ -5219,7 +5283,7 @@ PPCODE:
     if (len == sign)
 	amount[len++] = '0';
     amount[len] = '\0';
-    strrev(amount+sign);
+    _strrev(amount+sign);
 
     /* VT_CY has an implied decimal point before the last 4 digits */
     SV *number;
@@ -5463,8 +5527,15 @@ PPCODE:
     V_VT(&byref) = vt_base;
     if (vt_base == VT_VARIANT)
         V_VARIANTREF(&variant) = &byref;
-    else
+    else {
         V_BYREF(&variant) = &V_BYREF(&byref);
+	if (vt_base == VT_BSTR)
+	    V_BSTR(&byref) = NULL;
+	else if (vt_base == VT_DISPATCH)
+	    V_DISPATCH(&byref) = NULL;
+	else if (vt_base == VT_UNKNOWN)
+	    V_UNKNOWN(&byref) = NULL;
+    }
 
     HRESULT hr = S_OK;
     if (ix == 0) { /* Get */
@@ -5480,8 +5551,16 @@ PPCODE:
 	LCID lcid = QueryPkgVar(THIS_ olestash, LCID_NAME, LCID_LEN,
 				lcidDefault);
 	hr = AssignVariantFromSV(THIS_ ST(items-1), &variant, cp, lcid);
-	if (SUCCEEDED(hr))
-	    hr = SafeArrayPutElement(psa, rgIndices, V_BYREF(&variant));
+	if (SUCCEEDED(hr)) {
+	    if (vt_base == VT_BSTR)
+		hr = SafeArrayPutElement(psa, rgIndices, V_BSTR(&byref));
+	    else if (vt_base == VT_DISPATCH)
+		hr = SafeArrayPutElement(psa, rgIndices, V_DISPATCH(&byref));
+	    else if (vt_base == VT_UNKNOWN)
+		hr = SafeArrayPutElement(psa, rgIndices, V_UNKNOWN(&byref));
+	    else
+		hr = SafeArrayPutElement(psa, rgIndices, V_BYREF(&variant));
+	}
 	if (SUCCEEDED(hr))
 	    ST(0) = sv_mortalcopy(self);
     }

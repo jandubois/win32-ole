@@ -261,3 +261,17 @@ $v = Variant(VT_BYREF|VT_VARIANT, $v);
 printf "# v(0,0)=%d v(1,1)=%d\n", $v->Get(0,0), $v->Get(1,1);
 print "not " unless $v->Get(0,0) == 1 && $v->Get(1,1) == 4;
 printf "ok %d\n", ++$Test;
+
+# 35. Test SAFEARRAY of BSTRs
+$v = Variant(VT_ARRAY|VT_BSTR, 2);
+$v->Put(0,'Hello')->Put(1,'World');
+printf "# v(0)=%s\n", $v->Get(0);
+print "not " unless $v->Get(0) eq 'Hello';
+printf "ok %d\n", ++$Test;
+
+# 36. Test SAFEARRAY f VARIANTs
+#$v = Variant(VT_ARRAY|VT_VARIANT, 2);
+#$v->Put(0,Variant(VT_CY, 4.23))->Put(1,Variant(VT_I2, 42));
+# TODO: Get() doesn't return Variant objects here
+#printf "# vt(0)=%d v(1)==%d\n", $v->Get(0)->Type, $v->Get(1)->Type;
+#print "not " unless $v->Get(0) eq 'Hello';

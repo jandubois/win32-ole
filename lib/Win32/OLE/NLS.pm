@@ -427,7 +427,7 @@ Win32::OLE::NLS - OLE National Language Support
 =head1 DESCRIPTION
 
 This module provides access to the national language support features
-in the OLENLS.DLL.
+in the F<OLENLS.DLL>.
 
 =head2 Functions
 
@@ -499,7 +499,7 @@ The requested TYPE can be one of the following 3 levels:
 The return value is a list of values, each of wich is a bitwise OR of
 the applicable type bits from the corresponding table below:
 
-	@ct = GetStringInfo(LOCALE_SYSTEM_DEFAULT, CT_CTYPE1, "String");
+	@ct = GetStringType(LOCALE_SYSTEM_DEFAULT, CT_CTYPE1, "String");
 
 ANSI C and POSIX character type information:
 

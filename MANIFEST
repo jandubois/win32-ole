@@ -5,13 +5,15 @@ Makefile.PL
 OLE.xs
 README
 ToDo
+hints/cygwin.pl
 lib/OLE.pm		Compatibility layer: old toplevel OLE.pm
+lib/Win32/OLE.pm
 lib/Win32/OLE/Const.pm	Win32::OLE::Const module: TypeLib constants
 lib/Win32/OLE/Enum.pm	Win32::OLE::Enum module: Collection objects
 lib/Win32/OLE/Lite.pm   Lightweight OLE.pm not using ANY other modules
 lib/Win32/OLE/NEWS.pod	History of user visable changes
 lib/Win32/OLE/NLS.pm	Win32::OLE::NLS module: National Language Support
-lib/Win32/OLE.pm
+lib/Win32/OLE/TPJ.pod	Win32::OLE article from "The Perl Journal" #10
 lib/Win32/OLE/TypeInfo.pm       Win32::OLE::TypeInfo module
 lib/Win32/OLE/Variant.pm	Win32::OLE::Variant module: VARIANT variables
 

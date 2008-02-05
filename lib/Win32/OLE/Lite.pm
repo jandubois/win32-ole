@@ -26,7 +26,6 @@ unless (defined &Dispatch) {
     &$xs('Win32::OLE');
 }
 
-$Strict = ($^H & 0x200) != 0; # strict 'subs' in effect?
 $Warn = 1;
 
 sub CP_ACP   {0;}     # ANSI codepage
@@ -87,32 +86,26 @@ sub LastError {
     return $$LastError;
 }
 
+my $Options = "^(?:CP|LCID|Warn)\$";
+
 sub Option {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
 	$AUTOLOAD = 'Option';
 	goto &AUTOLOAD;
     }
 
-    shift; # class name
+    my $class = shift;
 
     if (@_ == 1) {
-	my $Option = shift;
-	$Option eq "CP"     && return $CP;
-	$Option eq "LCID"   && return $LCID;
-	$Option eq "Strict" && return $Strict; # Intentionally undocumented!
-	$Option eq "Warn"   && return $Warn;
-	_croak("Invalid Win32::OLE option: $Option");
+	my $option = shift;
+	return ${"${class}::$option"} if $option =~ /$Options/o;
+	_croak("Invalid $class option: $option");
     }
 
     while (@_) {
-	my ($Option,$Value) = splice @_, 0, 2;
-	if    ($Option eq "CP")     { $CP = $Value; }
-	elsif ($Option eq "LCID")   { $LCID = $Value; }
-	elsif ($Option eq "Strict") { $Strict = $Value; }
-	elsif ($Option eq "Warn")   { $Warn = $Value; }
-	else {
-	    _croak("Invalid Win32::OLE option: $Option");
-	}
+	my ($option,$value) = splice @_, 0, 2;
+	_croak("Invalid $class option: $option") if $option !~ /$Options/o;
+	${"${class}::$option"} = $value;
     }
 }
 
@@ -153,7 +146,8 @@ sub AUTOLOAD {
     _croak("Cannot autoload class method \"$AUTOLOAD\"") 
       unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
     my $success = $self->Dispatch($AUTOLOAD, my $retval, @_);
-    unless (defined $success || $Strict) {
+    unless (defined $success || ($^H & 0x200) != 0) {
+	warn "retrying default method";
 	# Retry default method if C<no strict 'subs';>
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
     }
@@ -183,8 +177,8 @@ sub valof {
 	require Win32::OLE::Variant;
 	my ($class) = overload::StrVal($arg) =~ /^([^=]+)=/;
 	#no strict 'refs';
-	local $Win32::OLE::CP = ${$class."::CP"};
-	local $Win32::OLE::LCID = ${$class."::LCID"};
+	local $Win32::OLE::CP = ${"${class}::CP"};
+	local $Win32::OLE::LCID = ${"${class}::LCID"};
 	#use strict 'refs';
 	# VT_EMPTY variant for return code
 	my $variant = Win32::OLE::Variant->new;

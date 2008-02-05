@@ -8,6 +8,28 @@ This file contains a history of user visible changes to the
 Win32::OLE::* modules. Only new features and major bug fixes that
 might affect backwards compatibility are included.
 
+=head1 Version 0.12
+
+=head2 Additional error handling functionality
+
+The Warn option can now be set to a CODE reference too.  For example,
+
+    Win32::OLE->Option(Warn => 3);
+
+could now be written as
+
+    Win32::OLE->Option(Warn => \&Carp::croak);
+
+This can even be used to emulate the VisualBasic C<On Error Goto
+Label> construct:
+
+    Win32::OLE->Option(Warn =>  sub {goto CheckError});
+    # ... your normal OLE code here ...
+
+  CheckError:
+    # ... your error handling code here ...
+
+
 =head1 Version 0.11 (changes since 0.1008)
 
 =head2 new DHTML typelib browser

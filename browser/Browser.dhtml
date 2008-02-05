@@ -131,10 +131,10 @@ foreach my $frame (qw(Libraries Types Members)) {
 # =================
 
 sub strcmp {
-    my ($a,$b) = @_;
+    my ($x,$y) = @_;
     # skip leading underscores and translate to lowercase
-    s/^_*(.*)/\l\1/ for $a, $b;
-    return $a cmp $b;
+    s/^_*(.*)/\l$1/ for $x, $y;
+    return $x cmp $y;
 }
 
 # showHelpfile event

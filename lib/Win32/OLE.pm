@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1101';
+$VERSION = '0.1102';
 
 use Carp;
 use Exporter;
@@ -520,6 +520,23 @@ an error happens.  Valid values are:
 The error number and message (without Carp line/module info) are
 available through the C<Win32::OLE->LastError> class method.
 
+Alternatively the Warn option can be set to a CODE reference.  E.g.
+
+    Win32::OLE->Option(Warn => 3);
+
+is equivalent to
+
+    Win32::OLE->Option(Warn => \&Carp::croak);
+
+This can even be used to emulate the VisualBasic C<On Error Goto
+Label> construct:
+
+    Win32::OLE->Option(Warn =>  sub {goto CheckError});
+    # ... your normal OLE code here ...
+
+  CheckError:
+    # ... your error handling code here ...
+
 =back
 
 =head1 EXAMPLES
@@ -858,6 +875,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.1101	  24 September 1999
+Version 0.1102	  24 September 1999
 
 =cut

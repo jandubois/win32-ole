@@ -10,6 +10,8 @@
 use strict;
 use Win32::OLE qw(EVENTS);
 
+use Cwd;
+
 $|=$^W = 1;
 
 open(ME,$0) or die $!;
@@ -19,7 +21,8 @@ close(ME);
 # 1. Create a new Excel automation server
 my ($Excel,$File);
 BEGIN {
-    $File = Win32::GetCwd . "\\test.xls";
+    $File = cwd . "\\test.xls";
+    chomp($File = `cygpath -w '$File'`) if($^O eq 'cygwin');
     unless (-f $File) {
 	print "# $File doesn't exist! Please run test 3_ole.t first\n";
 	print "1..0\n";
