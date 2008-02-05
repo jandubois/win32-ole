@@ -3,6 +3,11 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1703	unreleased, September 6th 2005
+	- remove all USING_WIDE() codepaths
+	- use PTR2IV() and INT2PTR() macros
+	- make everything work with current cygwin
+
 0.1702	unreleased, Sun, September 5th 2004
 	- fix freeing of VT_BYREF Win32::OLE::Variant objects
 

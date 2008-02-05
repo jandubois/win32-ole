@@ -1,8 +1,4 @@
 $self->{CC} = 'g++';
-$self->{LIBS} = ['-lole32 -loleaut32 -luuid -lmsvcrt40'];
-$self->{CCFLAGS} .= '-fvtable-thunks ' . $Config{ccflags};
-
-# NOTE: These two functions are used for a typelib browser
-#       that requires the ActiveState PerlScript wrapper.
-sub MY::post_constants {}
-sub MY::postamble {}
+$self->{LD} = 'g++';
+$self->{LIBS} = ['-L/lib/w32api -lnetapi32 -lwininet -lversion -lmpr -lodbc32 -lodbccp32 -lwinmm -lole32 -loleaut32 -luuid -lcomctl32 -lgdi32 -lcomdlg32 -lntdll'];
+$self->{LDDLFLAGS} .= "-shared $Config{ccflags}";

@@ -94,7 +94,7 @@ BEGIN {
 	chomp $Msg;
 	$Msg =~ s/\n/\n\# /g;
 	print "# $Msg\n";
-	print "1..0 # Skipped: Excel.Application not installed\n";
+	print "1..0 # skip Excel.Application not installed\n";
 	exit 0;
     }
 }
@@ -320,7 +320,7 @@ printf "ok %d\n", ++$Test;
 eval { require Unicode::String };
 ++$Test;
 if ($@) {
-    printf "ok %d # Skipped: Unicode::String module not installed\n", $Test;
+    printf "ok %d # skip Unicode::String module not installed\n", $Test;
 }
 else {
     $Sheet->Cells(1,3)->{Value} = Unicode::String::utf8("\342\230\272");
@@ -495,7 +495,7 @@ eval {
 };
 ++$Test;
 if ($@) {
-    printf "ok %d # Skipped: Registry problem $@\n", $Test;
+    printf "ok %d # skip Registry problem $@\n", $Test;
 }
 else {
     print "# Object application is $Value\n";

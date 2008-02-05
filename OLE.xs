@@ -44,14 +44,33 @@
 #endif
 
 extern "C" {
+#ifndef GUIDKIND_DEFAULT_SOURCE_DISP_IID
+#   define GUIDKIND_DEFAULT_SOURCE_DISP_IID 1
+#endif
 
 #ifdef __CYGWIN__
 #   undef WIN32			/* don't use with Cygwin & Perl */
 #   include <netdb.h>
 #   include <sys/socket.h>
 #   include <unistd.h>
-#   define strrev _strrev
-    char *_strrev(char*);	/* from string.h (msvcrt40) */
+
+#   ifndef strrev
+#     define strrev my_strrev
+
+static char *
+my_strrev(char *str)
+{
+    char *left = str;
+    char *right = left + strlen(left) - 1;
+    while (left < right) {
+        char temp = *left;
+        *left++ = *right;
+        *right-- = temp;
+    }
+    return str;
+}
+
+#   endif /* strrev */
 #endif
 
 #define PERL_NO_GET_CONTEXT
@@ -77,7 +96,13 @@ typedef unsigned short WORD;
 #endif
 
 #if PERL_VERSION > 6
-#   define utf8_to_uv utf8n_to_uvuni
+#   define my_utf8_to_uv(s) utf8_to_uvuni(s, NULL)
+#else
+#   if PERL_SUBVERSION > 0
+#      define my_utf8_to_uv(s) utf8_to_uv_simple(s, NULL)
+#   else
+#      define my_utf8_to_uv(s) utf8_to_uv(s, NULL)
+#   endif
 #endif
 
 #ifndef _DEBUG
@@ -182,7 +207,7 @@ typedef struct
                                 sizeof(MY_VERSION)-1, FALSE);          \
         if (!pinterp || !*pinterp || !SvIOK(*pinterp))		       \
             warn(MY_VERSION ": Per-interpreter data not initialized"); \
-        PERINTERP *pInterp = (PERINTERP*)SvIV(*pinterp)
+        PERINTERP *pInterp = INT2PTR(PERINTERP*, SvIV(*pinterp))
 #    define INTERP pInterp
 #else
 static PERINTERP Interp;
@@ -404,10 +429,9 @@ MagicGet(pTHX_ SV *sv)
 BOOL
 StartsWithAlpha(pTHX_ SV *sv)
 {
-    STRLEN len;
-    char *str = SvPV(sv, len);
+    char *str = SvPV_nolen(sv);
     if (SvUTF8(sv))
-        return isALPHA_uni(utf8_to_uv((U8*)str, len, NULL, 0));
+        return isALPHA_uni(my_utf8_to_uv((U8*)str));
     else
         return isALPHA(*str);
 }
@@ -440,18 +464,10 @@ IsLocalMachine(pTHX_ SV *host)
 	return TRUE;
 
     /* Check against local computer name (from registry) */
-    if (USING_WIDE()) {
-	WCHAR wComputerName[MAX_COMPUTERNAME_LENGTH+1];
-	WCHAR wHostName[MAX_COMPUTERNAME_LENGTH+1];
-	A2WHELPER(pszName, wHostName, sizeof(wHostName));
-	if (GetComputerNameW(wComputerName, &dwSize)
-	    && _wcsicmp(wHostName, wComputerName) == 0)
-	    return TRUE;
-    }
-    else {
-	if (GetComputerNameA(szComputerName, &dwSize)
-	    && stricmp(pszName, szComputerName) == 0)
-	    return TRUE;
+    if (GetComputerNameA(szComputerName, &dwSize)
+        && stricmp(pszName, szComputerName) == 0)
+    {
+        return TRUE;
     }
 
     /* gethostname(), gethostbyname() and inet_addr() all call proxy functions
@@ -524,18 +540,9 @@ CLSIDFromRemoteRegistry(pTHX_ SV *host, SV *progid, CLSID *pCLSID)
     HKEY hKeyLocalMachine;
     HKEY hKeyProgID;
     LONG err;
-    WCHAR wbuffer[MAX_PATH+1];
     HRESULT hr = S_OK;
 
-    if (USING_WIDE()) {
-        // XXX Using SvPV_nolen(host) is not really right,
-        // XXX but USING_WIDE() is already pretty dodgy to start with.
-	A2WHELPER(SvPV_nolen(host), wbuffer, sizeof(wbuffer));
-	err = RegConnectRegistryW(wbuffer, HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
-    }
-    else {
-	err = RegConnectRegistryA(SvPV_nolen(host), HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
-    }
+    err = RegConnectRegistryA(SvPV_nolen(host), HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
     if (err != ERROR_SUCCESS)
 	return HRESULT_FROM_WIN32(err);
 
@@ -543,15 +550,8 @@ CLSIDFromRemoteRegistry(pTHX_ SV *host, SV *progid, CLSID *pCLSID)
     sv_catsv(subkey, progid);
     sv_catpv(subkey, "\\CLSID");
 
-    if (USING_WIDE()) {
-	A2WHELPER(SvPV_nolen(subkey), wbuffer, sizeof(wbuffer));
-	err = RegOpenKeyExW(hKeyLocalMachine, wbuffer, 0, KEY_READ,
-			   &hKeyProgID);
-    }
-    else {
-	err = RegOpenKeyExA(hKeyLocalMachine, SvPV_nolen(subkey), 0, KEY_READ,
-			   &hKeyProgID);
-    }
+    err = RegOpenKeyExA(hKeyLocalMachine, SvPV_nolen(subkey), 0, KEY_READ,
+                        &hKeyProgID);
     if (err != ERROR_SUCCESS)
 	hr = HRESULT_FROM_WIN32(err);
     else {
@@ -848,29 +848,11 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
     /* try to append ': "error text"' from message catalog */
     char *pszMsgText;
     DWORD dwCount;
-    if (USING_WIDE()) {
-	WCHAR *wzMsgText;
-	dwCount = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-				  FORMAT_MESSAGE_FROM_SYSTEM |
-				  FORMAT_MESSAGE_IGNORE_INSERTS,
-				  NULL, hr, lcidSystemDefault,
-				  (LPWSTR)&wzMsgText, 0, NULL);
-	pszMsgText = (LPSTR)LocalAlloc(0, (dwCount+1)*2);
-	if (pszMsgText) {
-	    W2AHELPER(wzMsgText, pszMsgText, (dwCount+1)*2);
-	    dwCount = strlen(pszMsgText);
-	}
-	else
-	    dwCount = 0;
-	LocalFree(wzMsgText);
-    }
-    else {
-	dwCount = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
-				  FORMAT_MESSAGE_FROM_SYSTEM |
-				  FORMAT_MESSAGE_IGNORE_INSERTS,
-				  NULL, hr, lcidSystemDefault,
-				  (LPSTR)&pszMsgText, 0, NULL);
-    }
+    dwCount = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER |
+                             FORMAT_MESSAGE_FROM_SYSTEM |
+                             FORMAT_MESSAGE_IGNORE_INSERTS,
+                             NULL, hr, lcidSystemDefault,
+                             (LPSTR)&pszMsgText, 0, NULL);
     if (dwCount > 0) {
 	sv_catpv(sv, ": \"");
 	/* remove trailing dots and CRs/LFs from message */
@@ -1049,7 +1031,7 @@ CreatePerlObject(pTHX_ HV *stash, IDispatch *pDispatch, SV *destroy)
         DBG(("hv_fetch(%08x) returned %08x", punk, svp));
         punk->Release();
         if (svp)
-            return sv_2mortal(sv_bless(newRV((SV*)SvIV(*svp)), stash));
+            return sv_2mortal(sv_bless(newRV(INT2PTR(SV*, SvIV(*svp))), stash));
     }
 
     if (!pDispatch) {
@@ -1090,7 +1072,7 @@ CreatePerlObject(pTHX_ HV *stash, IDispatch *pDispatch, SV *destroy)
         pDispatch->QueryInterface(IID_IUnknown, (void**)&punk);
         /* use XIV as a weak reference */
         SV **svp = hv_store(g_hv_unique, (char*)&punk, sizeof(punk),
-                            newSViv((IV)pObj->self), 0);
+                            newSViv(PTR2IV(pObj->self)), 0);
         DBG(("hv_store(%08x) returned %08x", punk, svp));
         punk->Release();
         pObj->flags |= OBJFLAG_UNIQUE;
@@ -1101,7 +1083,7 @@ CreatePerlObject(pTHX_ HV *stash, IDispatch *pDispatch, SV *destroy)
     DBG(("CreatePerlObject=|%lx| Class=%s Tie=%s pDispatch=0x%x\n", pObj,
 	 HvNAME(stash), szTie, pDispatch));
 
-    hv_store(hvinner, PERL_OLE_ID, PERL_OLE_IDLEN, newSViv((IV)pObj), 0);
+    hv_store(hvinner, PERL_OLE_ID, PERL_OLE_IDLEN, newSViv(PTR2IV(pObj)), 0);
     inner = sv_bless(newRV_noinc((SV*)hvinner), gv_stashpv(szTie, TRUE));
     sv_magic((SV*)pObj->self, inner, 'P', Nullch, 0);
     SvREFCNT_dec(inner);
@@ -1223,7 +1205,7 @@ GetOleObject(pTHX_ SV *sv, BOOL bDESTROY=FALSE)
 	    MagicGet(aTHX_ *psv);
 
 	if (psv && SvIOK(*psv)) {
-	    WINOLEOBJECT *pObj = (WINOLEOBJECT*)SvIV(*psv);
+	    WINOLEOBJECT *pObj = INT2PTR(WINOLEOBJECT*, SvIV(*psv));
 
 	    DBG(("GetOleObject = |%lx|\n", pObj));
 	    if (pObj && pObj->header.lMagic == WINOLE_MAGIC)
@@ -1240,7 +1222,7 @@ WINOLEENUMOBJECT *
 GetOleEnumObject(pTHX_ SV *sv, BOOL bDESTROY=FALSE)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLEENUM)) {
-	WINOLEENUMOBJECT *pEnumObj = (WINOLEENUMOBJECT*)SvIV(SvRV(sv));
+	WINOLEENUMOBJECT *pEnumObj = INT2PTR(WINOLEENUMOBJECT*, SvIV(SvRV(sv)));
 
 	if (pEnumObj && pEnumObj->header.lMagic == WINOLEENUM_MAGIC)
 	    if (pEnumObj->pEnum || bDESTROY)
@@ -1255,7 +1237,7 @@ WINOLEVARIANTOBJECT *
 GetOleVariantObject(pTHX_ SV *sv, BOOL bWarn=TRUE)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLEVARIANT)) {
-	WINOLEVARIANTOBJECT *pVarObj = (WINOLEVARIANTOBJECT*)SvIV(SvRV(sv));
+	WINOLEVARIANTOBJECT *pVarObj = INT2PTR(WINOLEVARIANTOBJECT*, SvIV(SvRV(sv)));
 
 	if (pVarObj && pVarObj->header.lMagic == WINOLEVARIANT_MAGIC)
 	    return pVarObj;
@@ -1279,7 +1261,7 @@ CreateTypeLibObject(pTHX_ ITypeLib *pTypeLib, TLIBATTR *pTLibAttr)
 
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pObj, WINOLETYPELIB_MAGIC);
 
-    return sv_bless(newRV_noinc(newSViv((IV)pObj)),
+    return sv_bless(newRV_noinc(newSViv(PTR2IV(pObj))),
 		    gv_stashpv(szWINOLETYPELIB, TRUE));
 }
 
@@ -1287,7 +1269,7 @@ WINOLETYPELIBOBJECT *
 GetOleTypeLibObject(pTHX_ SV *sv)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLETYPELIB)) {
-	WINOLETYPELIBOBJECT *pObj = (WINOLETYPELIBOBJECT*)SvIV(SvRV(sv));
+	WINOLETYPELIBOBJECT *pObj = INT2PTR(WINOLETYPELIBOBJECT*, SvIV(SvRV(sv)));
 
 	if (pObj && pObj->header.lMagic == WINOLETYPELIB_MAGIC)
 	    return pObj;
@@ -1308,7 +1290,7 @@ CreateTypeInfoObject(pTHX_ ITypeInfo *pTypeInfo, TYPEATTR *pTypeAttr)
 
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pObj, WINOLETYPEINFO_MAGIC);
 
-    return sv_bless(newRV_noinc(newSViv((IV)pObj)),
+    return sv_bless(newRV_noinc(newSViv(PTR2IV(pObj))),
 		    gv_stashpv(szWINOLETYPEINFO, TRUE));
 }
 
@@ -1316,7 +1298,7 @@ WINOLETYPEINFOOBJECT *
 GetOleTypeInfoObject(pTHX_ SV *sv)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLETYPEINFO)) {
-	WINOLETYPEINFOOBJECT *pObj = (WINOLETYPEINFOOBJECT*)SvIV(SvRV(sv));
+	WINOLETYPEINFOOBJECT *pObj = INT2PTR(WINOLETYPEINFOOBJECT*, SvIV(SvRV(sv)));
 
 	if (pObj && pObj->header.lMagic == WINOLETYPEINFO_MAGIC)
 	    return pObj;
@@ -1846,7 +1828,7 @@ FindDefaultSource(pTHX_ WINOLEOBJECT *pObj, IID *piid,
 	if ((iFlags & IMPLTYPEFLAG_FDEFAULT) &&
 	    (iFlags & IMPLTYPEFLAG_FSOURCE))
 	{
-	    HREFTYPE hRefType = NULL;
+	    HREFTYPE hRefType = 0;
 
 	    hr = pTypeInfo->GetRefTypeOfImplType(i, &hRefType);
 	    DBG(("GetRefTypeOfImplType: hr=0x%08x\n", hr));
@@ -2615,9 +2597,9 @@ AssignVariantFromSV(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 
 #   define ASSIGN(vartype,perltype,ctype)                            \
         if (vt & VT_BYREF) {                                         \
-            *V_##vartype##REF(pVariant) = (ctype)Sv##perltype##(sv); \
+            *V_##vartype##REF(pVariant) = (ctype)Sv##perltype (sv);  \
         } else {                                                     \
-            V_##vartype(pVariant) = (ctype)Sv##perltype##(sv);       \
+            V_##vartype(pVariant) = (ctype)Sv##perltype (sv);        \
         }
 
     /* XXX requirement to call mg_get() may change in Perl > 5.005 */
@@ -2853,9 +2835,9 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
 #   define SET(perltype,vartype)                                 \
         if (vt & VT_BYREF) {                                     \
-            sv_set##perltype##(sv, *V_##vartype##REF(pVariant)); \
+            sv_set##perltype (sv, *V_##vartype##REF(pVariant));  \
         } else {                                                 \
-            sv_set##perltype##(sv, V_##vartype##(pVariant));     \
+            sv_set##perltype (sv, V_##vartype (pVariant));       \
         }
 
     sv_setsv(sv, &PL_sv_undef);
@@ -3133,46 +3115,13 @@ GetLocaleNumber(pTHX_ HV *hv, char *key, LCID lcid, LCTYPE lctype)
     }
 
     IV number;
-    if (USING_WIDE()) {
-	WCHAR *info;
-	int len = GetLocaleInfoW(lcid, lctype, NULL, 0);
-	New(0, info, len, WCHAR);
-	GetLocaleInfoW(lcid, lctype, info, len);
-	number = _wtol(info);
-	Safefree(info);
-    }
-    else {
-	char *info;
-	int len = GetLocaleInfoA(lcid, lctype, NULL, 0);
-	New(0, info, len, char);
-	GetLocaleInfoA(lcid, lctype, info, len);
-	number = atol(info);
-	Safefree(info);
-    }
+    char *info;
+    int len = GetLocaleInfoA(lcid, lctype, NULL, 0);
+    New(0, info, len, char);
+    GetLocaleInfoA(lcid, lctype, info, len);
+    number = atol(info);
+    Safefree(info);
     return number;
-}
-
-WCHAR *
-GetLocaleStringW(pTHX_ HV *hv, char *key, LCID lcid, LCTYPE lctype)
-{
-    STRLEN len;
-    SV *sv;
-    if (hv) {
-	SV **psv = hv_fetch(hv, key, strlen(key), FALSE);
-	if (psv) {
-	    char* ptr = SvPV(*psv, len);
-	    ++len;
-	    sv = sv_2mortal(newSV(len*sizeof(WCHAR)));
-	    WCHAR* wptr = (WCHAR*)SvPVX(sv);
-	    A2WHELPER(ptr, wptr, len*sizeof(WCHAR));
-	    return wptr;
-	}
-    }
-
-    len = GetLocaleInfoW(lcid, lctype, NULL, 0);
-    sv = sv_2mortal(newSV(len*sizeof(WCHAR)));
-    GetLocaleInfoW(lcid, lctype, (WCHAR*)SvPVX(sv), len);
-    return (WCHAR*)SvPVX(sv);
 }
 
 char *
@@ -3324,7 +3273,7 @@ Bootstrap(pTHX)
     if (SvOK(sv))
 	warn(MY_VERSION ": Per-interpreter data already set");
 
-    sv_setiv(sv, (IV)pInterp);
+    sv_setiv(sv, PTR2IV(pInterp));
 #endif
 
     g_pObj = NULL;
@@ -4326,7 +4275,7 @@ PPCODE:
 		    if ((iFlags & IMPLTYPEFLAG_FDEFAULT) &&
 			(iFlags & IMPLTYPEFLAG_FSOURCE))
 		    {
-			HREFTYPE hRefType = NULL;
+			HREFTYPE hRefType = 0;
 			hr = pObj->pTypeInfo->GetRefTypeOfImplType(i, &hRefType);
 			DBG(("GetRefTypeOfImplType: hr=0x%08x\n", hr));
 			if (FAILED(hr))
@@ -4821,14 +4770,7 @@ PPCODE:
 {
     HKEY hKeyTypelib;
     FILETIME ft;
-    LONG err;
-
-    if (USING_WIDE()) {
-	err = RegOpenKeyExW(HKEY_CLASSES_ROOT, L"Typelib", 0, KEY_READ, &hKeyTypelib);
-    }
-    else {
-	err = RegOpenKeyExA(HKEY_CLASSES_ROOT, "Typelib", 0, KEY_READ, &hKeyTypelib);
-    }
+    LONG err = RegOpenKeyExA(HKEY_CLASSES_ROOT, "Typelib", 0, KEY_READ, &hKeyTypelib);
     if (err != ERROR_SUCCESS) {
 	warn("Cannot access HKEY_CLASSES_ROOT\\Typelib");
 	XSRETURN_EMPTY;
@@ -4840,103 +4782,45 @@ PPCODE:
     for (DWORD dwClsid=0;; ++dwClsid) {
 	HKEY hKeyClsid;
 	char szClsid[200];
-	WCHAR wClsid[100];
-	DWORD cbClsid;
-	if (USING_WIDE()) {
-	    cbClsid = (sizeof(wClsid)/sizeof(wClsid[0]));
-	    err = RegEnumKeyExW(hKeyTypelib, dwClsid, wClsid, &cbClsid,
-			       NULL, NULL, NULL, &ft);
-	    if (err != ERROR_SUCCESS)
-		break;
+        DWORD cbClsid = sizeof(szClsid);
+        err = RegEnumKeyExA(hKeyTypelib, dwClsid, szClsid, &cbClsid,
+                            NULL, NULL, NULL, &ft);
+        if (err != ERROR_SUCCESS)
+            break;
 
-	    err = RegOpenKeyExW(hKeyTypelib, wClsid, 0, KEY_READ, &hKeyClsid);
-	    if (err != ERROR_SUCCESS)
-    		continue;
-
-	    W2AHELPER(wClsid, szClsid, sizeof(szClsid));
-	    cbClsid = strlen(szClsid);
-	}
-	else {
-	    cbClsid = (sizeof(szClsid)/sizeof(szClsid[0]));
-	    err = RegEnumKeyExA(hKeyTypelib, dwClsid, szClsid, &cbClsid,
-			       NULL, NULL, NULL, &ft);
-	    if (err != ERROR_SUCCESS)
-		break;
-
-	    err = RegOpenKeyExA(hKeyTypelib, szClsid, 0, KEY_READ, &hKeyClsid);
-	    if (err != ERROR_SUCCESS)
-		continue;
-	}
+        err = RegOpenKeyExA(hKeyTypelib, szClsid, 0, KEY_READ, &hKeyClsid);
+        if (err != ERROR_SUCCESS)
+            continue;
 
 	// Enumerate versions for current clsid
 	for (DWORD dwVersion=0;; ++dwVersion) {
 	    HKEY hKeyVersion;
 	    char szVersion[20];
+            DWORD cbVersion = sizeof(szVersion);
+
+            err = RegEnumKeyExA(hKeyClsid, dwVersion, szVersion, &cbVersion,
+                                NULL, NULL, NULL, &ft);
+            if (err != ERROR_SUCCESS)
+                break;
+
+            err = RegOpenKeyExA(hKeyClsid, szVersion, 0, KEY_READ, &hKeyVersion);
+            if (err != ERROR_SUCCESS)
+                continue;
+
 	    char szTitle[600];
-	    WCHAR wVersion[10];
-	    WCHAR wTitle[300];
-	    DWORD cbVersion;
-	    LONG cbTitle;
-	    if (USING_WIDE()) {
-		cbVersion = (sizeof(wVersion)/sizeof(wVersion[0]));
-		err = RegEnumKeyExW(hKeyClsid, dwVersion, wVersion, &cbVersion,
-				   NULL, NULL, NULL, &ft);
-		if (err != ERROR_SUCCESS)
-		    break;
-
-		err = RegOpenKeyExW(hKeyClsid, wVersion, 0, KEY_READ, &hKeyVersion);
-		if (err != ERROR_SUCCESS)
-		    continue;
-
-		cbTitle = (sizeof(wTitle)/sizeof(wTitle[0]));
-		err = RegQueryValueW(hKeyVersion, NULL, wTitle, &cbTitle);
-		if (err != ERROR_SUCCESS || cbTitle <= 1)
-		    continue;
-
-		W2AHELPER(wVersion, szVersion, sizeof(szVersion));
-		cbVersion = strlen(szVersion);
-		W2AHELPER(wTitle, szTitle, sizeof(szTitle));
-		cbTitle = strlen(szTitle);
-	    }
-	    else {
-		cbVersion = (sizeof(szVersion)/sizeof(szVersion[0]));
-		err = RegEnumKeyExA(hKeyClsid, dwVersion, szVersion, &cbVersion,
-				   NULL, NULL, NULL, &ft);
-		if (err != ERROR_SUCCESS)
-		    break;
-
-		err = RegOpenKeyExA(hKeyClsid, szVersion, 0, KEY_READ, &hKeyVersion);
-		if (err != ERROR_SUCCESS)
-		    continue;
-
-		cbTitle = (sizeof(szTitle)/sizeof(szTitle[0]));
-		err = RegQueryValueA(hKeyVersion, NULL, szTitle, &cbTitle);
-		if (err != ERROR_SUCCESS || cbTitle <= 1)
-		    continue;
-	    }
+            LONG cbTitle = sizeof(szTitle);
+            err = RegQueryValueA(hKeyVersion, NULL, szTitle, &cbTitle);
+            if (err != ERROR_SUCCESS || cbTitle <= 1)
+                continue;
 
 	    // Enumerate languages
 	    for (DWORD dwLangid=0;; ++dwLangid) {
 		char szLangid[20];
-		WCHAR wLangid[10];
-		DWORD cbLangid;
-		if (USING_WIDE()) {
-		    cbLangid = (sizeof(wLangid)/sizeof(wLangid[0]));
-		    err = RegEnumKeyExW(hKeyVersion, dwLangid, wLangid, &cbLangid,
-				       NULL, NULL, NULL, &ft);
-		    if (err != ERROR_SUCCESS)
-			break;
-
-		    W2AHELPER(wLangid, szLangid, sizeof(szLangid));
-		    cbLangid = strlen(szLangid);
-		}
-		else {
-		    cbLangid = (sizeof(szLangid)/sizeof(szLangid[0]));
-		    err = RegEnumKeyExA(hKeyVersion, dwLangid, szLangid, &cbLangid,
-				       NULL, NULL, NULL, &ft);
-		    if (err != ERROR_SUCCESS)
-			break;
-		}
+		DWORD cbLangid = sizeof(szLangid);
+                err = RegEnumKeyExA(hKeyVersion, dwLangid, szLangid, &cbLangid,
+                                    NULL, NULL, NULL, &ft);
+                if (err != ERROR_SUCCESS)
+                    break;
 
 		// Language ids must be strictly numeric
 		char *psz=szLangid;
@@ -4946,34 +4830,15 @@ PPCODE:
 		    continue;
 
 		HKEY hKeyLangid;
-		if (USING_WIDE()) {
-		    // wLangid is still valid
-		    err = RegOpenKeyExW(hKeyVersion, wLangid, 0, KEY_READ,
-				       &hKeyLangid);
-		    if (err != ERROR_SUCCESS)
-			continue;
-		}
-		else {
-		    err = RegOpenKeyExA(hKeyVersion, szLangid, 0, KEY_READ,
-				       &hKeyLangid);
-		    if (err != ERROR_SUCCESS)
-			continue;
-		}
+                err = RegOpenKeyExA(hKeyVersion, szLangid, 0, KEY_READ,
+                                    &hKeyLangid);
+                if (err != ERROR_SUCCESS)
+                    continue;
 
 		// Retrieve filename of type library
 		char szFile[MAX_PATH+1];
-		WCHAR wFile[MAX_PATH+1];
 		LONG cbFile = sizeof(szFile);
-		if (USING_WIDE()) {
-		    cbFile = (sizeof(wFile)/sizeof(wFile[0]));
-		    err = RegQueryValueW(hKeyLangid, L"win32", wFile, &cbFile);
-		    W2AHELPER(wFile, szFile, sizeof(szFile));
-		    cbFile = strlen(szFile)+1;
-		}
-		else {
-		    cbFile = (sizeof(szFile)/sizeof(szFile[0]));
-		    err = RegQueryValueA(hKeyLangid, "win32", szFile, &cbFile);
-		}
+                err = RegQueryValueA(hKeyLangid, "win32", szFile, &cbFile);
 		if (err == ERROR_SUCCESS && cbFile > 1) {
                     ENTER;
                     SAVETMPS;
@@ -5068,7 +4933,7 @@ PPCODE:
 
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pEnumObj, WINOLEENUM_MAGIC);
 
-    SV *sv = newSViv((IV)pEnumObj);
+    SV *sv = newSViv(PTR2IV(pEnumObj));
     ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), GetStash(aTHX_ self)));
     XSRETURN(1);
 }
@@ -5303,7 +5168,7 @@ PPCODE:
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pVarObj, WINOLEVARIANT_MAGIC);
 
     HV *stash = GetStash(aTHX_ self);
-    SV *sv = newSViv((IV)pVarObj);
+    SV *sv = newSViv(PTR2IV(pVarObj));
     ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
     XSRETURN(1);
 }
@@ -5466,7 +5331,7 @@ PPCODE:
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pNewVar, WINOLEVARIANT_MAGIC);
 
     HV *stash = GetStash(aTHX_ self);
-    SV *sv = newSViv((IV)pNewVar);
+    SV *sv = newSViv(PTR2IV(pNewVar));
     ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
     XSRETURN(1);
 }
@@ -5517,59 +5382,25 @@ PPCODE:
     SYSTEMTIME systime;
     VariantTimeToSystemTime(V_DATE(&variant), &systime);
 
-    WCHAR* wFmt = NULL;
     int len;
-    if (USING_WIDE()) {
-	if (fmt) {
-	    len = strlen(fmt)+1;
-	    New(0, wFmt, len, WCHAR);
-	    A2WHELPER(fmt, wFmt, len*sizeof(WCHAR));
-	}
-
-	if (ix == 0)
-	    len = GetDateFormatW(lcid, dwFlags, &systime, wFmt, NULL, 0);
-	else
-	    len = GetTimeFormatW(lcid, dwFlags, &systime, wFmt, NULL, 0);
-    }
-    else {
-	if (ix == 0)
-	    len = GetDateFormatA(lcid, dwFlags, &systime, fmt, NULL, 0);
-	else
-	    len = GetTimeFormatA(lcid, dwFlags, &systime, fmt, NULL, 0);
-    }
+    if (ix == 0)
+        len = GetDateFormatA(lcid, dwFlags, &systime, fmt, NULL, 0);
+    else
+        len = GetTimeFormatA(lcid, dwFlags, &systime, fmt, NULL, 0);
     if (len > 1) {
-	if (USING_WIDE()) {
-	    WCHAR* wInfo;
-	    char* pInfo;
-	    New(0, wInfo, len+1, WCHAR);
-	    if (ix == 0)
-		len = GetDateFormatW(lcid, dwFlags, &systime, wFmt, wInfo, len);
-	    else
-		len = GetTimeFormatW(lcid, dwFlags, &systime, wFmt, wInfo, len);
-	    New(0, pInfo, (len+1)*2, char);
-	    W2AHELPER(wInfo, pInfo, (len+1)*2);
-	    ST(0) = sv_2mortal(newSVpv(pInfo, 0));
-	    Safefree(pInfo);
-	    Safefree(wInfo);
-	}
-	else {
-	    SV *sv = ST(0) = sv_2mortal(newSV(len));
-	    if (ix == 0)
-		len = GetDateFormatA(lcid, dwFlags, &systime, fmt, SvPVX(sv), len);
-	    else
-		len = GetTimeFormatA(lcid, dwFlags, &systime, fmt, SvPVX(sv), len);
+        SV *sv = ST(0) = sv_2mortal(newSV(len));
+        if (ix == 0)
+            len = GetDateFormatA(lcid, dwFlags, &systime, fmt, SvPVX(sv), len);
+        else
+            len = GetTimeFormatA(lcid, dwFlags, &systime, fmt, SvPVX(sv), len);
 
-	    if (len > 1) {
-		SvCUR_set(sv, len-1);
-		SvPOK_on(sv);
-	    }
+        if (len > 1) {
+            SvCUR_set(sv, len-1);
+            SvPOK_on(sv);
 	}
     }
     else
         ST(0) = &PL_sv_undef;
-
-    if (wFmt)
-	Safefree(wFmt);
 
     VariantClear(&variant);
     XSRETURN(1);
@@ -5623,49 +5454,25 @@ PPCODE:
 	XSRETURN_EMPTY;
 
     CURRENCYFMTA afmt;
-    CURRENCYFMTW wfmt;
-    if (USING_WIDE()) {
-        Zero(&wfmt, 1, CURRENCYFMTW);
+    Zero(&afmt, 1, CURRENCYFMTA);
 
-	wfmt.NumDigits        = GetLocaleNumber(aTHX_ hv, "NumDigits",
-					       lcid, LOCALE_IDIGITS);
-	wfmt.LeadingZero      = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-					       lcid, LOCALE_ILZERO);
-	wfmt.Grouping         = GetLocaleNumber(aTHX_ hv, "Grouping",
-					       lcid, LOCALE_SMONGROUPING);
-	wfmt.NegativeOrder    = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-					       lcid, LOCALE_INEGCURR);
-	wfmt.PositiveOrder    = GetLocaleNumber(aTHX_ hv, "PositiveOrder",
-					       lcid, LOCALE_ICURRENCY);
+    afmt.NumDigits        = GetLocaleNumber(aTHX_ hv, "NumDigits",
+                                            lcid, LOCALE_IDIGITS);
+    afmt.LeadingZero      = GetLocaleNumber(aTHX_ hv, "LeadingZero",
+                                            lcid, LOCALE_ILZERO);
+    afmt.Grouping         = GetLocaleNumber(aTHX_ hv, "Grouping",
+                                            lcid, LOCALE_SMONGROUPING);
+    afmt.NegativeOrder    = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
+                                            lcid, LOCALE_INEGCURR);
+    afmt.PositiveOrder    = GetLocaleNumber(aTHX_ hv, "PositiveOrder",
+                                            lcid, LOCALE_ICURRENCY);
 
-	wfmt.lpDecimalSep     = GetLocaleStringW(aTHX_ hv, "DecimalSep",
-					       lcid, LOCALE_SMONDECIMALSEP);
-	wfmt.lpThousandSep    = GetLocaleStringW(aTHX_ hv, "ThousandSep",
-					       lcid, LOCALE_SMONTHOUSANDSEP);
-	wfmt.lpCurrencySymbol = GetLocaleStringW(aTHX_ hv, "CurrencySymbol",
-					       lcid, LOCALE_SCURRENCY);
-    }
-    else {
-	Zero(&afmt, 1, CURRENCYFMTA);
-
-	afmt.NumDigits        = GetLocaleNumber(aTHX_ hv, "NumDigits",
-					       lcid, LOCALE_IDIGITS);
-	afmt.LeadingZero      = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-					       lcid, LOCALE_ILZERO);
-	afmt.Grouping         = GetLocaleNumber(aTHX_ hv, "Grouping",
-					       lcid, LOCALE_SMONGROUPING);
-	afmt.NegativeOrder    = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-					       lcid, LOCALE_INEGCURR);
-	afmt.PositiveOrder    = GetLocaleNumber(aTHX_ hv, "PositiveOrder",
-					       lcid, LOCALE_ICURRENCY);
-
-	afmt.lpDecimalSep     = GetLocaleString(aTHX_ hv, "DecimalSep",
-					       lcid, LOCALE_SMONDECIMALSEP);
-	afmt.lpThousandSep    = GetLocaleString(aTHX_ hv, "ThousandSep",
-					       lcid, LOCALE_SMONTHOUSANDSEP);
-	afmt.lpCurrencySymbol = GetLocaleString(aTHX_ hv, "CurrencySymbol",
-					       lcid, LOCALE_SCURRENCY);
-    }
+    afmt.lpDecimalSep     = GetLocaleString(aTHX_ hv, "DecimalSep",
+                                            lcid, LOCALE_SMONDECIMALSEP);
+    afmt.lpThousandSep    = GetLocaleString(aTHX_ hv, "ThousandSep",
+                                            lcid, LOCALE_SMONTHOUSANDSEP);
+    afmt.lpCurrencySymbol = GetLocaleString(aTHX_ hv, "CurrencySymbol",
+                                            lcid, LOCALE_SCURRENCY);
 
     int len = 0;
     int sign = 0;
@@ -5697,45 +5504,20 @@ PPCODE:
     DBG(("amount='%s' number='%s' len=%d sign=%d", amount, SvPVX(number),
 	 len, sign));
 
-    WCHAR* wNumber = NULL;
     char* pNumber = SvPVX(number);
-    if (USING_WIDE()) {
-	len = strlen(pNumber)+1;
-	New(0, wNumber, len, WCHAR);
-	A2WHELPER(pNumber, wNumber, len*sizeof(WCHAR));
-	len = GetCurrencyFormatW(lcid, dwFlags, wNumber, &wfmt, NULL, 0);
-    }
-    else {
-	len = GetCurrencyFormatA(lcid, dwFlags, pNumber, &afmt, NULL, 0);
-    }
+    len = GetCurrencyFormatA(lcid, dwFlags, pNumber, &afmt, NULL, 0);
     if (len > 1) {
-	if (USING_WIDE()) {
-	    WCHAR* wInfo;
-	    char* pInfo;
-	    New(0, wInfo, len+1, WCHAR);
-	    New(0, pInfo, (len+1)*2, char);
-	    len = GetCurrencyFormatW(lcid, dwFlags, wNumber, &wfmt,
-				     wInfo, len);
-	    W2AHELPER(wInfo, pInfo, (len+1)*2);
-	    ST(0) = sv_2mortal(newSVpv(pInfo, 0));
-	    Safefree(pInfo);
-	    Safefree(wInfo);
-	}
-	else {
-	    SV *sv = ST(0) = sv_2mortal(newSV(len));
-	    len = GetCurrencyFormatA(lcid, dwFlags, pNumber, &afmt,
-				     SvPVX(sv), len);
-	    if (len > 1) {
-		SvCUR_set(sv, len-1);
-		SvPOK_on(sv);
-	    }
-	}
+        SV *sv = ST(0) = sv_2mortal(newSV(len));
+        len = GetCurrencyFormatA(lcid, dwFlags, pNumber, &afmt,
+                                 SvPVX(sv), len);
+        if (len > 1) {
+            SvCUR_set(sv, len-1);
+            SvPOK_on(sv);
+        }
     }
     else
 	ST(0) = &PL_sv_undef;
 
-    if (wNumber)
-	Safefree(wNumber);
     SvREFCNT_dec(number);
     VariantClear(&variant);
     XSRETURN(1);
@@ -5790,85 +5572,39 @@ PPCODE:
 
     UINT NumDigits;
     NUMBERFMTA afmt;
-    NUMBERFMTW wfmt;
-    if (USING_WIDE()) {
-	Zero(&wfmt, 1, NUMBERFMT);
 
-	wfmt.NumDigits     = GetLocaleNumber(aTHX_ hv, "NumDigits",
-					    lcid, LOCALE_IDIGITS);
-	wfmt.LeadingZero   = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-					    lcid, LOCALE_ILZERO);
-	wfmt.Grouping      = GetLocaleNumber(aTHX_ hv, "Grouping",
-					    lcid, LOCALE_SGROUPING);
-	wfmt.NegativeOrder = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-					    lcid, LOCALE_INEGNUMBER);
+    Zero(&afmt, 1, NUMBERFMT);
 
-	wfmt.lpDecimalSep  = GetLocaleStringW(aTHX_ hv, "DecimalSep",
-					    lcid, LOCALE_SDECIMAL);
-	wfmt.lpThousandSep = GetLocaleStringW(aTHX_ hv, "ThousandSep",
-					    lcid, LOCALE_STHOUSAND);
-	NumDigits = wfmt.NumDigits;
-    }
-    else {
-	Zero(&afmt, 1, NUMBERFMT);
+    afmt.NumDigits     = GetLocaleNumber(aTHX_ hv, "NumDigits",
+                                         lcid, LOCALE_IDIGITS);
+    afmt.LeadingZero   = GetLocaleNumber(aTHX_ hv, "LeadingZero",
+                                         lcid, LOCALE_ILZERO);
+    afmt.Grouping      = GetLocaleNumber(aTHX_ hv, "Grouping",
+                                         lcid, LOCALE_SGROUPING);
+    afmt.NegativeOrder = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
+                                         lcid, LOCALE_INEGNUMBER);
 
-	afmt.NumDigits     = GetLocaleNumber(aTHX_ hv, "NumDigits",
-					    lcid, LOCALE_IDIGITS);
-	afmt.LeadingZero   = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-					    lcid, LOCALE_ILZERO);
-	afmt.Grouping      = GetLocaleNumber(aTHX_ hv, "Grouping",
-					    lcid, LOCALE_SGROUPING);
-	afmt.NegativeOrder = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-					    lcid, LOCALE_INEGNUMBER);
-
-	afmt.lpDecimalSep  = GetLocaleString(aTHX_ hv, "DecimalSep",
-					    lcid, LOCALE_SDECIMAL);
-	afmt.lpThousandSep = GetLocaleString(aTHX_ hv, "ThousandSep",
-					    lcid, LOCALE_STHOUSAND);
-	NumDigits = afmt.NumDigits;
-    }
+    afmt.lpDecimalSep  = GetLocaleString(aTHX_ hv, "DecimalSep",
+                                         lcid, LOCALE_SDECIMAL);
+    afmt.lpThousandSep = GetLocaleString(aTHX_ hv, "ThousandSep",
+                                         lcid, LOCALE_STHOUSAND);
+    NumDigits = afmt.NumDigits;
 
     int len;
     SV *number = newSVpvf("%.*f", NumDigits, V_R8(&variant));
     char* pNumber = SvPVX(number);
-    WCHAR* wNumber = NULL;
-    if (USING_WIDE()) {
-	len = strlen(pNumber)+1;
-	New(0, wNumber, len, WCHAR);
-	A2WHELPER(pNumber, wNumber, len*sizeof(WCHAR));
-	len = GetNumberFormatW(lcid, dwFlags, wNumber, &wfmt, NULL, 0);
-    }
-    else {
-	len = GetNumberFormatA(lcid, dwFlags, pNumber, &afmt, NULL, 0);
-    }
+    len = GetNumberFormatA(lcid, dwFlags, pNumber, &afmt, NULL, 0);
     if (len > 1) {
-	if (USING_WIDE()) {
-	    WCHAR* wInfo;
-	    char* pInfo;
-	    New(0, wInfo, len+1, WCHAR);
-	    New(0, pInfo, (len+1)*2, char);
-	    len = GetNumberFormatW(lcid, dwFlags, wNumber, &wfmt,
-				     wInfo, len);
-	    W2AHELPER(wInfo, pInfo, (len+1)*2);
-	    ST(0) = sv_2mortal(newSVpv(pInfo, 0));
-	    Safefree(pInfo);
-	    Safefree(wInfo);
-	}
-	else {
-	    SV *sv = ST(0) = sv_2mortal(newSV(len));
-	    len = GetNumberFormatA(lcid, dwFlags, pNumber, &afmt,
-				   SvPVX(sv), len);
-	    if (len > 1) {
-		SvCUR_set(sv, len-1);
-		SvPOK_on(sv);
-	    }
-	}
+        SV *sv = ST(0) = sv_2mortal(newSV(len));
+        len = GetNumberFormatA(lcid, dwFlags, pNumber, &afmt,
+                               SvPVX(sv), len);
+        if (len > 1) {
+            SvCUR_set(sv, len-1);
+            SvPOK_on(sv);
+        }
     }
     else
 	ST(0) = &PL_sv_undef;
-
-    if (wNumber)
-	Safefree(wNumber);
 
     SvREFCNT_dec(number);
     VariantClear(&variant);
@@ -6180,19 +5916,8 @@ PPCODE:
     STRLEN length2;
     char *string1 = SvPV(str1, length1);
     char *string2 = SvPV(str2, length2);
-    int res;
 
-    if (USING_WIDE()) {
-	WCHAR *wstring1, *wstring2;
-	New(0, wstring1, length1+1, WCHAR);
-	New(0, wstring2, length2+1, WCHAR);
-	A2WHELPER(string1, wstring1, (length1+1)*sizeof(WCHAR));
-	A2WHELPER(string2, wstring2, (length2+1)*sizeof(WCHAR));
-	res = CompareStringW(lcid, flags, wstring1, -1, wstring2, -1);
-    }
-    else {
-	res = CompareStringA(lcid, flags, string1, length1, string2, length2);
-    }
+    IV res = CompareStringA(lcid, flags, string1, length1, string2, length2);
     XSRETURN_IV(res);
 }
 
@@ -6204,46 +5929,20 @@ LCMapString(lcid,flags,str)
 PPCODE:
 {
     SV *sv;
-    int len;
     STRLEN length;
-    WCHAR* wstring = NULL;
-    char *string = SvPV(str,length);
-    if (USING_WIDE()) {
-	len = strlen(string)+1;
-	New(0, wstring, len, WCHAR);
-	A2WHELPER(string, wstring, len*sizeof(WCHAR));
-	len = LCMapStringW(lcid, flags, wstring, -1, NULL, 0);
-    }
-    else {
-	len = LCMapStringA(lcid, flags, string, length, NULL, 0);
-    }
+    char *string = SvPV(str, length);
+    int len = LCMapStringA(lcid, flags, string, length, NULL, 0);
     if (len > 0) {
-	if (USING_WIDE()) {
-	    WCHAR* wInfo;
-	    char* pInfo;
-	    New(0, wInfo, len+1, WCHAR);
-	    New(0, pInfo, (len+1)*2, char);
-	    len = LCMapStringW(lcid, flags, wstring, -1, wInfo, len);
-	    W2AHELPER(wInfo, pInfo, (len+1)*2);
-	    sv = sv_2mortal(newSVpv(pInfo, 0));
-	    Safefree(pInfo);
-	    Safefree(wInfo);
-	}
-	else {
-	    sv = sv_newmortal();
-	    SvUPGRADE(sv, SVt_PV);
-	    SvGROW(sv, (STRLEN)(len+1));
-	    SvCUR_set(sv, LCMapStringA(lcid, flags, string, length,
-				       SvPVX(sv), SvLEN(sv)));
-	    if (SvCUR(sv))
-		SvPOK_on(sv);
-	}
+        sv = sv_newmortal();
+        SvUPGRADE(sv, SVt_PV);
+        SvGROW(sv, (STRLEN)(len+1));
+        SvCUR_set(sv, LCMapStringA(lcid, flags, string, length,
+                                   SvPVX(sv), SvLEN(sv)));
+        if (SvCUR(sv))
+            SvPOK_on(sv);
     }
     else
 	sv = sv_newmortal();
-
-    if (wstring)
-	Safefree(wstring);
 
     ST(0) = sv;
     XSRETURN(1);
@@ -6255,31 +5954,16 @@ GetLocaleInfo(lcid,lctype)
     IV lctype
 PPCODE:
 {
-    SV *sv;
-    if (USING_WIDE()) {
-	WCHAR *info;
-	char *szInfo;
-	int len = GetLocaleInfoW(lcid, lctype, NULL, 0);
-	New(0, info, len, WCHAR);
-	GetLocaleInfoW(lcid, lctype, info, len);
-	New(0, szInfo, len*2, char);
-	W2AHELPER(info, szInfo, len*2);
-	sv = sv_2mortal(newSVpv(szInfo, 0));
-	Safefree(info);
-	Safefree(szInfo);
-    }
-    else {
-	sv = sv_newmortal();
-	int len = GetLocaleInfoA(lcid, lctype, NULL, 0);
-	if (len > 0) {
-	    SvUPGRADE(sv, SVt_PV);
-	    SvGROW(sv, (STRLEN)len);
-	    len = GetLocaleInfoA(lcid, lctype, SvPVX(sv), SvLEN(sv));
-	    if (len) {
-		SvCUR_set(sv, len-1);
-		SvPOK_on(sv);
-	    }
-	}
+    SV *sv = sv_newmortal();
+    int len = GetLocaleInfoA(lcid, lctype, NULL, 0);
+    if (len > 0) {
+        SvUPGRADE(sv, SVt_PV);
+        SvGROW(sv, (STRLEN)len);
+        len = GetLocaleInfoA(lcid, lctype, SvPVX(sv), SvLEN(sv));
+        if (len) {
+            SvCUR_set(sv, len-1);
+            SvPOK_on(sv);
+        }
     }
     ST(0) = sv;
     XSRETURN(1);
@@ -6355,7 +6039,7 @@ PPCODE:
 {
     DWORD_PTR dwResult;
 
-    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, NULL,
+    SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, 0,
 		       SMTO_NORMAL, 5000, &dwResult);
     XSRETURN_EMPTY;
 }
@@ -6367,18 +6051,7 @@ SetLocaleInfo(lcid,lctype,lcdata)
     char *lcdata
 PPCODE:
 {
-    BOOL result;
-    if (USING_WIDE()) {
-	WCHAR* wlcdata;
-	int len = strlen(lcdata)+1;
-	New(0, wlcdata, len, WCHAR);
-	A2WHELPER(lcdata, wlcdata, len*sizeof(WCHAR));
-	result = SetLocaleInfoW(lcid, lctype, wlcdata);
-	Safefree(wlcdata);
-    }
-    else {
-	result = SetLocaleInfoA(lcid, lctype, lcdata);
-    }
+    BOOL result = SetLocaleInfoA(lcid, lctype, lcdata);
     if (result)
 	XSRETURN_YES;
 
@@ -6831,7 +6504,7 @@ PPCODE:
 
     AddToObjectChain(aTHX_ (OBJECTHEADER*)pObj, WINOLETYPEINFO_MAGIC);
 
-    SV *sv = newSViv((IV)pObj);
+    SV *sv = newSViv(PTR2IV(pObj));
     ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), GetStash(aTHX_ self)));
     XSRETURN(1);
 }

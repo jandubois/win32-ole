@@ -24,7 +24,7 @@ my $Test = 0;
 # 1. Create Excel object using CreateObject syntax
 my $xl = CreateObject OLE "Excel.Application";
 unless (defined $xl) {
-    print "1..0 # Skipped: Excel.Application not installed\n";
+    print "1..0 # skip Excel.Application not installed\n";
     exit 0;
 }
 print "1..$TestCount\n";

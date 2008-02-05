@@ -25,7 +25,7 @@ BEGIN {
     $File = cwd . "\\test.xls";
     $File =~ s#\\#/#g, chomp($File = `cygpath -w '$File'`) if $^O eq 'cygwin';
     unless (-f $File) {
-	print "1..0 # Skipped: $File doesn't exist! Please run test 3_ole.t first\n";
+	print "1..0 # skip $File doesn't exist! Please run test 3_ole.t first\n";
 	exit 0;
     }
     Win32::OLE->Option(Warn => 0);
@@ -36,7 +36,7 @@ BEGIN {
 	chomp $Msg;
 	$Msg =~ s/\n/\n\# /g;
 	print "# $Msg\n";
-	print "1..0 # Skipped: Excel.Application not installed\n";
+	print "1..0 # skip Excel.Application not installed\n";
 	exit 0;
     }
 }

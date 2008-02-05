@@ -1,4 +1,12 @@
 <HTML><!-- Hey Emacs, please edit in -*- perl -*- mode -->
+<!-- saved from url=(0017)http://localhost/ -->
+
+Internet Explorer could not load the PerlScript engine.  This is most
+likely due to the value of the <i>"Initialize and script ActiveX
+controls not marked as safe"</i> security setting of the <i>"Local
+intranet"</i> zone.  PerlScript inside IE will only run on Windows XP
+SP2 and later if this setting is set to <i>Enable</i>.  Setting it to
+<i>Prompt</i> doesn't seem to work.
 
 <!-- We need some JScript until the PerlScript bugs are fixed. :-( -->
 <SCRIPT>
@@ -114,6 +122,7 @@ $css = "$Config{prefix}\\html\\win32prk.css" unless -f $css;
 foreach my $frame (qw(Header Libraries Types Members Footer)) {
     $frame{$frame} = $window->parent->frames($frame);
     $frame{$frame}->document->createStyleSheet($css) if -f $css;
+    $frame{$frame}->document->body->{innerHTML} = "";
 }
 
 # Rollon/Rolloff highlighting styles for Libraries, Types and Members

@@ -66,6 +66,8 @@ $self->{BASEEXT}.def: Makefile.PL
 
 # Install typelib browser for ActivePerl help
 sub MY::post_constants {
+    return unless defined &Win32::BuildNumber;
+
     my @files = qw(Browser.htm Browser.html Class.png Const.png Default.png
                    Enum.png Event.png Function.png Global.png Help.png
                    Library.png Module.png Property.png Type.png);
@@ -82,6 +84,8 @@ BROWSER_TO_BLIB =';
 }
 
 sub MY::postamble {
+    return unless defined &Win32::BuildNumber;
+
     return q{
 all :: browser_to_blib
 	@$(NOOP)
