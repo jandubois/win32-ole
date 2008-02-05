@@ -5,7 +5,7 @@
  *  ActiveState Tool Corp., http://www.ActiveState.com
  *
  *  Other modifications Copyright (c) 1997-1999 by Gurusamy Sarathy
- *  <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
+ *  <gsar@ActiveState.com> and Jan Dubois <jand@ActiveState.com>
  *
  *  You may distribute under the terms of either the GNU General Public
  *  License or the Artistic License, as specified in the README file.
@@ -64,6 +64,10 @@ extern "C" {
 #undef WORD
 typedef unsigned short WORD;
 
+#ifndef _WIN64
+#  define DWORD_PTR	DWORD
+#endif
+
 #if PERL_VERSION < 6
 #   error Win32::OLE requires Perl 5.6.0 or later
 #endif
@@ -79,10 +83,13 @@ typedef unsigned short WORD;
 void
 MyDebug(const char *pat, ...)
 {
+    DWORD thread = GetCurrentThreadId();
+    void *context = PERL_GET_CONTEXT;
     char szBuffer[512];
+    char *szMessage = szBuffer + sprintf(szBuffer, "[%d:%p] ", thread, context);
     va_list args;
     va_start(args, pat);
-    vsprintf(szBuffer, pat, args);
+    vsprintf(szMessage, pat, args);
     OutputDebugString(szBuffer);
     va_end(args);
 }
@@ -785,7 +792,7 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 				  NULL, hr, lcidSystemDefault,
 				  (LPWSTR)&wzMsgText, 0, NULL);
 	pszMsgText = (LPSTR)LocalAlloc(0, (dwCount+1)*2);
-	if(pszMsgText) {
+	if (pszMsgText) {
 	    W2AHELPER(wzMsgText, pszMsgText, (dwCount+1)*2);
 	    dwCount = strlen(pszMsgText);
 	}
@@ -2446,10 +2453,6 @@ SetVariantFromSVEx(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	V_VT(pVariant) = VT_BSTR;
 	V_BSTR(pVariant) = AllocOleString(aTHX_ SvPVX(sv), SvCUR(sv), cp);
     }
-    else {
-	V_VT(pVariant) = VT_ERROR;
-	V_ERROR(pVariant) = DISP_E_PARAMNOTFOUND;
-    }
 
     return hr;
 
@@ -2517,7 +2520,7 @@ AssignVariantFromSV(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	return hr;
     }
 
-    switch(vt & VT_TYPEMASK) {
+    switch (vt & VT_TYPEMASK) {
     case VT_EMPTY:
     case VT_NULL:
 	break;
@@ -2781,7 +2784,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	New(0, pUpperBound, dim, long);
 	New(0, pav,         dim, AV*);
 
-	for(index = 0; index < dim; ++index) {
+	for (index = 0; index < dim; ++index) {
 	    pav[index] = newAV();
 	    SafeArrayGetLBound(psa, index+1, &pLowerBound[index]);
 	    SafeArrayGetUBound(psa, index+1, &pUpperBound[index]);
@@ -2838,7 +2841,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	return hr;
     }
 
-    switch(vt & ~VT_BYREF) {
+    switch (vt & ~VT_BYREF) {
     case VT_VARIANT: /* invalid, should never happen */
     case VT_EMPTY:
     case VT_NULL:
@@ -3487,7 +3490,8 @@ PPCODE:
 {
     char *buffer = "";
     char *ptr;
-    unsigned int length, argErr;
+    size_t length;
+    unsigned int argErr;
     int index, arrayIndex;
     I32 len;
     WINOLEOBJECT *pObj;
@@ -3656,12 +3660,23 @@ PPCODE:
 		VariantInit(&dispParams.rgvarg[index]);
 	}
 
-	for(index = dispParams.cNamedArgs; index < dispParams.cArgs; ++index) {
+	for (index = dispParams.cNamedArgs; index < dispParams.cArgs; ++index) {
 	    SV *sv = ST(items-1-(index-dispParams.cNamedArgs));
-	    hr = SetVariantFromSVEx(aTHX_ sv, &dispParams.rgvarg[index],
-				    cp, lcid);
-	    if (FAILED(hr))
-		goto Cleanup;
+            VARIANT *pVariant = &dispParams.rgvarg[index];
+
+            /* XXX requirement to call mg_get() may change in Perl > 5.005 */
+            if (SvGMAGICAL(sv))
+                mg_get(sv);
+
+            if (SvOK(sv)) {
+                hr = SetVariantFromSVEx(aTHX_ sv, pVariant, cp, lcid);
+                if (FAILED(hr))
+                    goto Cleanup;
+            }
+            else {
+                V_VT(pVariant) = VT_ERROR;
+                V_ERROR(pVariant) = DISP_E_PARAMNOTFOUND;
+            }
 	}
     }
 
@@ -3741,7 +3756,7 @@ PPCODE:
  Cleanup:
     VariantClear(&result);
     if (dispParams.cArgs != 0 && dispParams.rgvarg) {
-	for(index = 0; index < dispParams.cArgs; ++index)
+	for (index = 0; index < dispParams.cArgs; ++index)
 	    VariantClear(&dispParams.rgvarg[index]);
 	Safefree(dispParams.rgvarg);
     }
@@ -4472,7 +4487,7 @@ PPCODE:
 	}
     }
 
-    for(index = 0; index < dispParams.cArgs; ++index)
+    for (index = 0; index < dispParams.cArgs; ++index)
 	VariantClear(&propertyValue[index]);
 
     if (CheckOleError(aTHX_ stash, hr, &excepinfo, err))
@@ -5381,7 +5396,7 @@ PPCODE:
     WCHAR* wFmt = NULL;
     int len;
     if (USING_WIDE()) {
-	if(fmt) {
+	if (fmt) {
 	    len = strlen(fmt)+1;
 	    New(0, wFmt, len, WCHAR);
 	    A2WHELPER(fmt, wFmt, len*sizeof(WCHAR));
@@ -5429,7 +5444,7 @@ PPCODE:
     else
         ST(0) = &PL_sv_undef;
 
-    if(wFmt)
+    if (wFmt)
 	Safefree(wFmt);
 
     VariantClear(&variant);
@@ -5594,8 +5609,8 @@ PPCODE:
     }
     else
 	ST(0) = &PL_sv_undef;
-    
-    if(wNumber)
+
+    if (wNumber)
 	Safefree(wNumber);
     SvREFCNT_dec(number);
     VariantClear(&variant);
@@ -5728,7 +5743,7 @@ PPCODE:
     else
 	ST(0) = &PL_sv_undef;
 
-    if(wNumber)
+    if (wNumber)
 	Safefree(wNumber);
 
     SvREFCNT_dec(number);
@@ -6085,7 +6100,7 @@ PPCODE:
     else
 	sv = sv_newmortal();
 
-    if(wstring)
+    if (wstring)
 	Safefree(wstring);
 
     ST(0) = sv;
@@ -6196,7 +6211,7 @@ void
 SendSettingChange()
 PPCODE:
 {
-    DWORD dwResult;
+    DWORD_PTR dwResult;
 
     SendMessageTimeout(HWND_BROADCAST, WM_SETTINGCHANGE, 0, NULL,
 		       SMTO_NORMAL, 5000, &dwResult);
@@ -6222,7 +6237,7 @@ PPCODE:
     else {
 	result = SetLocaleInfoA(lcid, lctype, lcdata);
     }
-    if(result)
+    if (result)
 	XSRETURN_YES;
 
     XSRETURN_EMPTY;
