@@ -30,10 +30,10 @@
 
 
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
+#define _WIN32_DCOM
 #include <windows.h>
 
 /* necessary for VC++ 5.0? */
-#define _WIN32_DCOM
 #include <objbase.h>
 
 #ifdef _DEBUG
@@ -1533,8 +1533,8 @@ Initialize(void)
     DBG(("Initialize\n"));
     EnterCriticalSection(&g_CriticalSection);
     if (!g_bInitialized) {
-	DBG(("OleInitialize\n"));
-	OleInitialize(NULL);
+	DBG(("CoInitializeEx\n"));
+	CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	g_bInitialized = TRUE;
     }
     LeaveCriticalSection(&g_CriticalSection);
@@ -1584,8 +1584,8 @@ Uninitialize(PERINTERP *pInterp, int magic)
 	}
 
 	SpinMessageLoop();
-	DBG(("OleUninitialize\n"));
-	OleUninitialize();
+	DBG(("CoUninitialize\n"));
+	CoUninitialize();
 
 	g_bInitialized = FALSE;
     }

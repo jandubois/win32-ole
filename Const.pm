@@ -9,6 +9,7 @@ use Win32::Registry;
 
 sub import {
     my ($self,$name,$major,$minor,$language,$codepage) = @_;
+    return unless defined($name) && $name !~ /^\s*$/;
     $self->Load($name,$major,$minor,$language,$codepage,scalar caller);
 }
 

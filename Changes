@@ -1,5 +1,12 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0807  (unreleased)
+	- OleInitialize repleaced by CoInitializeEx(NULL, COINIT_MULTITHREADED)
+	  (as suggested by James Snyder). This gets rid of the hidden top-level
+	  window problem.
+	- Fixed warning in Win32::OLE::Const when called without arg
+	- todo: (Initialize/Uninitialize class methods no longer do anything)
+
 0.0806  (unreleased)
 	- Bug fixes for IsLocalMachine()
 	- Free per-interpreter memory area at interpreter-exit
