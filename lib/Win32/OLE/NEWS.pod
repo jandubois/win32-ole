@@ -4,17 +4,22 @@
 
 Win32::OLE::NEWS - What's new in Win32::OLE
 
-This file contains a history of user visible changes to the Win32::OLE::*
-modules. Only new features and major bug fixes that might affect backwards
-compatibility are included.
+This file contains a history of user visible changes to the
+Win32::OLE::* modules. Only new features and major bug fixes that
+might affect backwards compatibility are included.
 
 =head1 Version 0.11 (changes since 0.1008)
 
 =head2 new DHTML typelib browser
 
-=head2 WithEvents() supports COCLASS name as 3rd arg
+The Win32::OLE distribution now contains a type library browser.  It
+is written in PerlScript, generating dynamic HTML.  It requires
+Internet Explorer 4.0 or later.  You'll find it in
+F<browser/Browser.html>.  It should be available in the ActivePerl
+HTML help under Win32::OLE::Browser.
 
-=head2 Forwarder objects
+After selecting a library, type or member you can press F1 to call up
+the corresponding help file at the appropriate location.
 
 =head2 VT_DECIMAL support
 
@@ -27,9 +32,9 @@ VT_DECIMAL variables are stored as 96-bit integers scaled by a
 variable power of 10.  The power of 10 scaling factor specifies the
 number of digits to the right of the decimal point, and ranges from 0
 to 28.  With a scale of 0 (no decimal places), the largest possible
-value is +/-79,228,162,514,264,337,593,543,950,335.  With a 28
-decimal places, the largest value is +/-7.9228162514264337593543950335
-and the smallest, non-zero value is +/-0.0000000000000000000000000001.
+value is +/-79,228,162,514,264,337,593,543,950,335.  With a 28 decimal
+places, the largest value is +/-7.9228162514264337593543950335 and the
+smallest, non-zero value is +/-0.0000000000000000000000000001.
 
 =head2 numerical Variant operations overloaded
 
