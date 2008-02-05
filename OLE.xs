@@ -3532,7 +3532,11 @@ PPCODE:
 	method = *av_fetch((AV*)sv, 1, FALSE);
     }
 
-    if (SvPOK(method)) {
+    if (SvIOK(method)) {
+        /* XXX this will NOT work with named parameters */
+        dispID = SvIV(method);
+    }
+    else if (SvPOK(method)) {
 	buffer = SvPV(method, length);
 	if (length > 0) {
             int newenum = QueryPkgVar(aTHX_ stash, _NEWENUM_NAME, _NEWENUM_LEN);
@@ -3748,6 +3752,34 @@ PPCODE:
     CheckOleError(aTHX_ stash, hr, &excepinfo, err);
 
     XSRETURN(1);
+}
+
+void
+GetIDsOfNames(self, method)
+    SV *self
+    SV *method
+PPCODE:
+{
+    char *buffer;
+    STRLEN length;
+    DISPID dispID;
+
+    WINOLEOBJECT *pObj = GetOleObject(aTHX_ self);
+    if (!pObj)
+	XSRETURN_EMPTY;
+
+    HV *stash = SvSTASH(pObj->self);
+    SetLastOleError(aTHX_ stash);
+
+    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+
+    buffer = SvPV(method, length);
+    HRESULT hr = GetHashedDispID(aTHX_ pObj, buffer, length, dispID, lcid, cp);
+    if (FAILED(hr))
+        XSRETURN_EMPTY;
+
+    XSRETURN_IV(dispID);
 }
 
 void

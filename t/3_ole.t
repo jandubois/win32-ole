@@ -114,6 +114,7 @@ printf "ok %d\n", ++$Test;
 $Obj->Quit if defined $Obj;
 
 # 3. Add a workbook (with default number of sheets)
+$Excel->{SheetsInNewWorkbook} = 3;
 my $Book = $Excel->Workbooks->Add;
 $Type = Win32::OLE->QueryObjectType($Book);
 print "# Book object type is $Type\n";
@@ -511,5 +512,17 @@ printf "# Application=%d Parent=%d\n", $Application, $Parent;
 print "not " unless $Application == $Parent;
 printf "ok %d\n", ++$Test;
 
-# 51. Terminate server instance ("ok $Test\n" printed by Excel destructor)
+# 51. Determine Dispatch ID of "Parent"
+my $dispid = $Excel->GetIDsOfNames("Parent");
+print "# DispID=$dispid\n";
+print "not " unless $dispid == 150;
+printf "ok %d\n", ++$Test;
+
+# 52. Dispatch using numeric ID instead of method/property name
+$Parent = $Excel->Invoke($dispid);
+printf "# Application=%d Parent=%d\n", $Application, $Parent;
+print "not " unless $Application == $Parent;
+printf "ok %d\n", ++$Test;
+
+# 53. Terminate server instance ("ok $Test\n" printed by Excel destructor)
 exit;
