@@ -1094,7 +1094,7 @@ GetOleEnumObject(CPERLarg_ SV *sv, BOOL bDESTROY=FALSE)
 }
 
 WINOLEVARIANTOBJECT *
-GetOleVariantObject(CPERLarg_ SV *sv)
+GetOleVariantObject(CPERLarg_ SV *sv, BOOL bWarn=TRUE)
 {
     if (sv_isobject(sv) && sv_derived_from(sv, szWINOLEVARIANT)) {
 	WINOLEVARIANTOBJECT *pVarObj = (WINOLEVARIANTOBJECT*)SvIV(SvRV(sv));
@@ -1102,8 +1102,11 @@ GetOleVariantObject(CPERLarg_ SV *sv)
 	if (pVarObj && pVarObj->header.lMagic == WINOLEVARIANT_MAGIC)
 	    return pVarObj;
     }
-    warn(MY_VERSION ": GetOleVariantObject() Not a %s object", szWINOLEVARIANT);
-    DEBUGBREAK;
+    if (bWarn) {
+	warn(MY_VERSION ": GetOleVariantObject() Not a %s object",
+	     szWINOLEVARIANT);
+	DEBUGBREAK;
+    }
     return (WINOLEVARIANTOBJECT*)NULL;
 }
 
@@ -2280,7 +2283,7 @@ AssignVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	return hr;
     }
 
-    switch(vt & ~VT_BYREF) {
+    switch(vt & VT_TYPEMASK) {
     case VT_EMPTY:
     case VT_NULL:
 	break;
@@ -2419,6 +2422,27 @@ AssignVariantFromSV(CPERLarg_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 		}
 	    }
 	}
+	break;
+    }
+
+    case VT_DECIMAL:
+    {
+	STRLEN len;
+	char *ptr = SvPV(sv, len);
+
+	VARIANT variant;
+	VariantInit(&variant);
+	V_VT(&variant) = VT_BSTR;
+	V_BSTR(&variant) = AllocOleString(THIS_ ptr, len, cp);
+
+	hr = VariantChangeTypeEx(&variant, &variant, lcid, 0, VT_DECIMAL);
+	if (SUCCEEDED(hr)) {
+	    if (vt & VT_BYREF)
+		*V_DECIMALREF(pVariant) = V_DECIMAL(&variant);
+	    else
+		V_DECIMAL(pVariant) = V_DECIMAL(&variant);
+	}
+	VariantClear(&variant);
 	break;
     }
 
@@ -2656,6 +2680,17 @@ SetSVFromVariantEx(CPERLarg_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	{
 	    sv_setsv(sv, CreatePerlObject(THIS_ stash, pDispatch, NULL));
 	}
+	break;
+    }
+
+    case VT_DECIMAL:
+    {
+	VARIANT variant;
+	VariantInit(&variant);
+	hr = VariantChangeTypeEx(&variant, pVariant, lcidDefault, 0, VT_R8);
+	if (SUCCEEDED(hr) && V_VT(&variant) == VT_R8)
+            sv_setnv(sv, V_R8(&variant));
+	VariantClear(&variant);
 	break;
     }
 
@@ -4561,8 +4596,12 @@ PPCODE:
 	UINT cp = QueryPkgVar(THIS_ olestash, CP_NAME, CP_LEN, cpDefault);
 	LCID lcid = QueryPkgVar(THIS_ olestash, LCID_NAME, LCID_LEN,
 				lcidDefault);
-	// XXX Check return code
-	AssignVariantFromSV(THIS_ data, pVariant, cp, lcid);
+	hr = AssignVariantFromSV(THIS_ data, pVariant, cp, lcid);
+	if (FAILED(hr)) {
+	    Safefree(pVarObj);
+	    ReportOleError(THIS_ olestash, hr);
+	    XSRETURN_EMPTY;
+	}
     }
 
     AddToObjectChain(THIS_ (OBJECTHEADER*)pVarObj, WINOLEVARIANT_MAGIC);
@@ -4587,6 +4626,75 @@ PPCODE:
     }
 
     XSRETURN_EMPTY;
+}
+
+void
+Add(left,right,swap)
+    SV *left
+    SV *right
+    SV *swap
+ALIAS:
+    Sub = 1
+    Mul = 2
+    Div = 3
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pLeft = GetOleVariantObject(THIS_ left);
+    if (!pLeft)
+	XSRETURN_EMPTY;
+
+    VARIANT *pVarLeft = &pLeft->variant;
+    VARIANT *pVarRight;
+    VARIANT temp;
+    VariantInit(&temp);
+
+    WINOLEVARIANTOBJECT *pRight = GetOleVariantObject(THIS_ right, FALSE);
+    if (pRight) {
+	pVarRight = &pRight->variant;
+    }
+    else {
+	HV *olestash = GetWin32OleStash(THIS_ left);
+	UINT cp = QueryPkgVar(THIS_ olestash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = QueryPkgVar(THIS_ olestash, LCID_NAME, LCID_LEN,
+				lcidDefault);
+	pVarRight = &temp;
+	HRESULT hr = SetVariantFromSVEx(THIS_ right, pVarRight, cp, lcid);
+	if (CheckOleError(THIS_ olestash, hr))
+	    XSRETURN_EMPTY;
+    }
+
+    if (SvTRUE(swap)) {
+	VARIANT *pVarTemp = pVarLeft;
+	pVarLeft = pVarRight;
+	pVarRight = pVarTemp;
+    }
+
+    WINOLEVARIANTOBJECT *pResult;
+    Newz(0, pResult, 1, WINOLEVARIANTOBJECT);
+    VariantInit(&pResult->variant);
+    VariantInit(&pResult->byref);
+
+    HRESULT hr = E_NOTIMPL;
+    switch (ix) {
+    case 0: hr = VarAdd(pVarLeft, pVarRight, &pResult->variant); break;
+    case 1: hr = VarSub(pVarLeft, pVarRight, &pResult->variant); break;
+    case 2: hr = VarMul(pVarLeft, pVarRight, &pResult->variant); break;
+    case 3: hr = VarDiv(pVarLeft, pVarRight, &pResult->variant); break;
+    }
+    VariantClear(&temp);
+    if (FAILED(hr)) {
+	HV *olestash = GetWin32OleStash(THIS_ left);
+	Safefree(pResult);
+	ReportOleError(THIS_ olestash, hr);
+	XSRETURN_EMPTY;
+    }
+
+    AddToObjectChain(THIS_ (OBJECTHEADER*)pResult, WINOLEVARIANT_MAGIC);
+
+    HV *stash = GetStash(THIS_ left);
+    SV *sv = newSViv((IV)pResult);
+    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), stash));
+    XSRETURN(1);
 }
 
 void

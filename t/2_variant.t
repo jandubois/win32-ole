@@ -261,3 +261,17 @@ $v = Variant(VT_BYREF|VT_VARIANT, $v);
 printf "# v(0,0)=%d v(1,1)=%d\n", $v->Get(0,0), $v->Get(1,1);
 print "not " unless $v->Get(0,0) == 1 && $v->Get(1,1) == 4;
 printf "ok %d\n", ++$Test;
+
+# 35. Does 'Add' overloading work?
+$v = Variant(VT_R8, 1.23);
+$v += 1.23;
+printf "# ref=%s value=%s\n", ref $v, $v;
+print "not " unless UNIVERSAL::isa($v, 'Win32::OLE::Variant') && $v == 2.46;
+printf "ok %d\n", ++$Test;
+
+# 36. VT_DECIMAL supported?
+$v = Variant(VT_DECIMAL, "79228162514264337593543950335");
+--$v;
+print "# value=$v\n";
+print "not " unless $v eq "79228162514264337593543950334";
+printf "ok %d\n", ++$Test;

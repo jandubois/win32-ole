@@ -12,7 +12,7 @@ use Exporter;
 @EXPORT = qw(
 	     Variant
 	     VT_EMPTY VT_NULL VT_I2 VT_I4 VT_R4 VT_R8 VT_CY VT_DATE VT_BSTR
-	     VT_DISPATCH VT_ERROR VT_BOOL VT_VARIANT VT_UNKNOWN VT_UI1
+	     VT_DISPATCH VT_ERROR VT_BOOL VT_VARIANT VT_UNKNOWN VT_DECIMAL VT_UI1
 	     VT_ARRAY VT_BYREF
 	    );
 
@@ -33,18 +33,22 @@ sub VT_ERROR {10;}
 sub VT_BOOL {11;}
 sub VT_VARIANT {12;}
 sub VT_UNKNOWN {13;}
+sub VT_DECIMAL {14;}	# Officially not allowed in VARIANTARGs
 sub VT_UI1 {17;}
 
 sub VT_ARRAY {0x2000;}
 sub VT_BYREF {0x4000;}
 
+
 # For backward compatibility
 sub CP_ACP   {0;}     # ANSI codepage
 sub CP_OEMCP {1;}     # OEM codepage
 
-use overload '""'     => sub {$_[0]->As(VT_BSTR)},
-             '0+'     => sub {$_[0]->As(VT_R8)},
-             fallback => 1; 
+use overload
+    '+' => 'Add', '-' => 'Sub', '*' => 'Mul', '/' => 'Div',
+    '""'     => sub {$_[0]->As(VT_BSTR)},
+    '0+'     => sub {$_[0]->As(VT_R8)},
+    fallback => 1;
 
 sub Variant {
     return Win32::OLE::Variant->new(@_);
@@ -439,10 +443,15 @@ These constants are exported by default:
 	VT_BOOL
 	VT_VARIANT
 	VT_UNKNOWN
+	VT_DECIMAL
 	VT_UI1
 
 	VT_ARRAY
 	VT_BYREF
+
+VT_DECIMAL is not on the official list of allowable OLE Automation
+datatypes. But even Microsoft ADO seems to sometimes return values
+of Recordset fields in VT_DECIMAL format.
 
 =head2 Variants
 

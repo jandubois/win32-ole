@@ -19,8 +19,8 @@ foreach my $Conv (in $Word->FileConverters) {
 
     if (@ARGV == 0) {
 	# Print list of converter names if run without arguments
-	printf( "%s %s %s\n", $ClassName, '.' x (26 - length($ClassName)), 
-		$Conv->{FormatName});
+	printf("%4d %s %s %s\n", $Conv->{SaveFormat}, $ClassName,
+	       '.' x (26 - length($ClassName)), $Conv->{FormatName});
     }
     elsif ($ClassName =~ /^$OutputFormat/oi) {
 	$SaveFormat = $Conv->{SaveFormat};

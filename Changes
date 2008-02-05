@@ -3,6 +3,11 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1009	(unreleased)
+	- Additional Variant overloads: Add, Sub, Mul, Div
+	- some additional variant conversion error checking
+	- VT_DECIMAL support
+
 0.1008	(unreleased)
 	- new LetProperty() method
 	- new COINIT_NO_INITIALIZE mode
