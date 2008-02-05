@@ -18,6 +18,7 @@
  * - Package Win32::OLE::Const    Load application constants from type library
  * - Package Win32::OLE::Enum     OLE collection enumeration
  * - Package Win32::OLE::Variant  Implements Perl VARIANT objects
+ * - Package Win32::OLE::NLS      National Language Support
  *
  */
 
@@ -42,6 +43,7 @@ extern "C" {
 #include "EXTERN.h"
 #include "perl.h"
 #include "XSub.h"
+#include "patchlevel.h"
 
 #if !defined(_DEBUG)
 #    define DBG(a)
@@ -89,15 +91,6 @@ static char LASTERR_NAME[] = "LastError";
 static const int LASTERR_LEN = sizeof(LASTERR_NAME)-1;
 static char TIE_NAME[] = "Tie";
 static const int TIE_LEN = sizeof(TIE_NAME)-1;
-
-/* MSC++ 4.2 contains an old/invalid definition of COSERVERINFO */
-typedef struct
-{
-    DWORD dwReserved1;
-    LPWSTR pwszName;
-    void  *pAuthInfo;
-    DWORD dwReserved2;
-}   MYCOSERVERINFO;
 
 typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
     (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
@@ -155,6 +148,38 @@ typedef struct
 static BOOL g_bInitialized = FALSE;
 static CRITICAL_SECTION g_CriticalSection;
 static OBJECTHEADER *g_pObj = NULL;
+
+/* The following function from IO.xs is in the core starting with 5.004_63 */
+#if (PATCHLEVEL == 4) && (SUBVERSION < 63)
+void
+newCONSTSUB(HV *stash, char *name, SV *sv)
+{
+#ifdef dTHR
+    dTHR;
+#endif
+    U32 oldhints = hints;
+    HV *old_cop_stash = curcop->cop_stash;
+    HV *old_curstash = curstash;
+    line_t oldline = curcop->cop_line;
+    curcop->cop_line = copline;
+
+    hints &= ~HINT_BLOCK_SCOPE;
+    if(stash)
+	curstash = curcop->cop_stash = stash;
+
+    newSUB(
+	start_subparse(FALSE, 0),
+	newSVOP(OP_CONST, 0, newSVpv(name,0)),
+	newSVOP(OP_CONST, 0, &sv_no),	/* SvPV(&sv_no) == "" -- GMB */
+	newSTATEOP(0, Nullch, newSVOP(OP_CONST, 0, sv))
+    );
+
+    hints = oldhints;
+    curcop->cop_stash = old_cop_stash;
+    curstash = old_curstash;
+    curcop->cop_line = oldline;
+}
+#endif
 
 /* forward declarations */
 HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
@@ -214,7 +239,10 @@ sv_setwide(SV *sv, OLECHAR *wide, UINT cp)
     char *pszBuffer;
 
     pszBuffer = GetMultiByte(wide, szBuffer, sizeof(szBuffer), cp);
-    sv_setpv(sv, pszBuffer);
+    if (sv == NULL)
+	sv = newSVpv(pszBuffer, 0);
+    else
+	sv_setpv(sv, pszBuffer);
     ReleaseBuffer(pszBuffer, szBuffer);
     return sv;
 }
@@ -517,16 +545,14 @@ ReleasePerlObject(WINOLEOBJECT *pObj)
      * first by Uninitialize() and then by Win32::OLE::DESTROY.
      * Make sure nothing is cleaned up twice!
      */
+
     if (pObj->destroy != NULL) {
-	/* XXX is it ok to create another mortal reference to an object
-	 * in its own DESTROY method ???
-	 */
 	SV *self = sv_2mortal(newRV_inc((SV*)pObj->self));
 
 	DBG(("Calling destroy method for object |%lx|\n", pObj));
 	if (SvPOK(pObj->destroy)) {
 	    /* Dispatch($self,$destroy,$retval); */
-	    EXTEND(sp,2);
+	    EXTEND(sp, 3);
 	    PUSHMARK(sp);
 	    PUSHs(self);
 	    PUSHs(pObj->destroy);
@@ -647,13 +673,13 @@ GetHashedDispID(WINOLEOBJECT *pObj, char *buffer, STRLEN len,
 
     if (len == 0 || *buffer == '\0') {
 	dispID = DISPID_VALUE;
-	return TRUE;
+	return S_OK;
     }
 
     SV **psv = hv_fetch(pObj->hashTable, buffer, len, 0);
     if (psv != NULL) {
 	dispID = (DISPID)SvIV(*psv);
-	return TRUE;
+	return S_OK;
     }
 
     /* not there so get info and add it */
@@ -798,11 +824,10 @@ NextPropertyName(WINOLEOBJECT *pObj)
 
 	    res = pObj->pTypeInfo->GetNames(pFuncDesc->memid, &bstr, 1, &cName);
 	    pObj->pTypeInfo->ReleaseFuncDesc(pFuncDesc);
-	    if (CheckOleError(stash, res)
-		|| cName == 0 || bstr == NULL)
+	    if (CheckOleError(stash, res) || cName == 0 || bstr == NULL)
 		continue;
 
-	    SV *sv = sv_setwide(newSVpv("",0), bstr, cp);
+	    SV *sv = sv_setwide(NULL, bstr, cp);
 	    SysFreeString(bstr);
 	    return sv;
 	}
@@ -828,7 +853,7 @@ NextPropertyName(WINOLEOBJECT *pObj)
 	    if (CheckOleError(stash, res) || cName == 0 || bstr == NULL)
 		continue;
 
-	    SV *sv = sv_setwide(newSVpv("",0), bstr, cp);
+	    SV *sv = sv_setwide(NULL, bstr, cp);
 	    SysFreeString(bstr);
 	    return sv;
 	}
@@ -882,7 +907,7 @@ NextEnumElement(IEnumVARIANT *pEnum, HV *stash)
     VARIANT variant;
 
     VariantInit(&variant);
-    if (pEnum->Next(1, &variant, NULL) == S_OK) {
+    if (SUCCEEDED(pEnum->Next(1, &variant, NULL))) {
 	sv = newSVpv("",0);
 	res = SetSVFromVariant(&variant, sv, stash);
     }
@@ -1497,7 +1522,7 @@ PPCODE:
     HKEY handle;
     HRESULT res;
     FNCOCREATEINSTANCEEX *pfnCreateInstance = NULL;
-    MYCOSERVERINFO ServerInfo;
+    COSERVERINFO ServerInfo;
     OLECHAR ServerName[OLE_BUF_SIZ];
 
     if (CallObjectMethod(mark, ax, items, "new"))
@@ -1522,7 +1547,7 @@ PPCODE:
 	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
 
     ST(0) = &sv_undef;
-    Zero(&ServerInfo, 1, MYCOSERVERINFO);
+    Zero(&ServerInfo, 1, COSERVERINFO);
 
     /* DCOM spec: ['Servername', 'Program.ID'] */
     if (SvROK(progid) && SvTYPE(SvRV(progid)) == SVt_PVAV) {
@@ -1557,21 +1582,18 @@ PPCODE:
     if (SUCCEEDED(res)) {
 	IDispatch *pDispatch = NULL;
 
-	if (pfnCreateInstance == NULL) {
+	if (pfnCreateInstance == NULL || ServerInfo.pwszName == NULL) {
 	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER, 
 				   IID_IDispatch, (void**)&pDispatch);
 	}
 	else {
-	    COSERVERINFO *psi = NULL;
-	    if (ServerInfo.pwszName != NULL)
-	        psi = (COSERVERINFO *) &ServerInfo;
+	    MULTI_QI multi_qi;
+	    Zero(&multi_qi, 1, MULTI_QI);
+	    multi_qi.pIID = &IID_IDispatch;
 
-	    MULTI_QI mqi;
-	    Zero(&mqi, 1, MULTI_QI);
-	    mqi.pIID = &IID_IDispatch;
-
-	    res = pfnCreateInstance(clsid, NULL, CLSCTX_SERVER, psi, 1, &mqi);
-	    pDispatch = (IDispatch *)mqi.pItf;
+	    res = pfnCreateInstance(clsid, NULL, CLSCTX_SERVER, &ServerInfo,
+				    1, &multi_qi);
+	    pDispatch = (IDispatch *)multi_qi.pItf;
 	}
 
 	if (SUCCEEDED(res)) {
@@ -1589,8 +1611,7 @@ DESTROY(self)
     SV *self
 PPCODE:
 {
-    WINOLEOBJECT *pObj = GetOleObject(self, TRUE);
-    ReleasePerlObject(pObj);
+    ReleasePerlObject(GetOleObject(self, TRUE));
     XSRETURN_EMPTY;
 }
 
@@ -1989,7 +2010,7 @@ PPCODE:
 	    XSRETURN_UNDEF;
 	}
 
-	PUSHs(sv_2mortal(sv_setwide(newSVpv("",0), bstr, cp)));
+	PUSHs(sv_2mortal(sv_setwide(NULL, bstr, cp)));
 	SysFreeString(bstr);
     }
 
@@ -1998,7 +2019,7 @@ PPCODE:
     if (CheckOleError(stash, res))
 	XSRETURN_UNDEF;
 
-    PUSHs(sv_2mortal(sv_setwide(newSVpv("",0), bstr, cp)));
+    PUSHs(sv_2mortal(sv_setwide(NULL, bstr, cp)));
     SysFreeString(bstr);
 }
 
@@ -2222,7 +2243,7 @@ PPCODE:
 	break;
     }
 
-    if (!SvREADONLY(ST(0)))
+    if (!SvIMMORTAL(ST(0)))
 	sv_2mortal(ST(0));
 
     XSRETURN(1);
@@ -2233,13 +2254,14 @@ PPCODE:
 MODULE = Win32::OLE		PACKAGE = Win32::OLE::Const
 
 void
-_Load(classid,major,minor,locale,codepage,typelib)
+_Load(classid,major,minor,locale,typelib,codepage,caller)
     SV *classid
     IV major
     IV minor
     SV *locale
-    SV *codepage
     SV *typelib
+    SV *codepage
+    SV *caller
 PPCODE:
 {
     ITypeLib *pTypeLib;
@@ -2250,6 +2272,8 @@ PPCODE:
     LCID lcid = lcidDefault;
     UINT cp = cpDefault;
     HV *stash = gv_stashpv(szWINOLE, TRUE);
+    HV *hv;
+    unsigned int count;
 
     Initialize();
     SetLastOleError(stash);
@@ -2263,7 +2287,6 @@ PPCODE:
     if (sv_derived_from(classid, szWINOLE)) {
 	/* Get containing typelib from IDispatch interface */
 	ITypeInfo *pTypeInfo;
-	unsigned int count;
 	WINOLEOBJECT *pObj = GetOleObject(classid);
 	if (pObj == NULL)
 	    XSRETURN_UNDEF;
@@ -2307,13 +2330,19 @@ PPCODE:
 	    XSRETURN_UNDEF;
     }
 
-    /* we'll return ref to hash with constant name => value pairs */
-    HV *hv = newHV();
-    unsigned int count = pTypeLib->GetTypeInfoCount();
-
-    ST(0) = sv_2mortal(newRV_noinc((SV*)hv));
+    if (SvOK(caller)) {
+	/* we'll define inlineable functions returning a const */
+        hv = gv_stashsv(caller, TRUE);
+	ST(0) = &sv_undef;
+    }
+    else {
+	/* we'll return ref to hash with constant name => value pairs */
+	hv = newHV();
+        ST(0) = sv_2mortal(newRV_noinc((SV*)hv));
+    }
 
     /* loop through all objects in type lib */
+    count = pTypeLib->GetTypeInfoCount();
     for (int index=0 ; index < count ; ++index) {
 	ITypeInfo *pTypeInfo;
 	LPTYPEATTR pTypeAttr;
@@ -2354,9 +2383,14 @@ PPCODE:
 		SV *sv = newSVpv("",0);
 		/* XXX LEAK alert */
 		res = SetSVFromVariant(pVarDesc->lpvarValue, sv, stash);
-		if (!CheckOleError(stash, res))
-		    hv_store(hv, pszName, strlen(pszName), sv, 0);
-
+		if (!CheckOleError(stash, res)) {
+		    if (SvOK(caller)) {
+			/* XXX check for valid symbol name */
+			newCONSTSUB(hv, pszName, sv);
+		    }
+		    else
+		        hv_store(hv, pszName, strlen(pszName), sv, 0);
+		}
 		SysFreeString(bstr);
 		ReleaseBuffer(pszName, szName);
 	    }
@@ -2426,10 +2460,8 @@ PPCODE:
     WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self, TRUE);
     if (pEnumObj != NULL) {
 	RemoveFromObjectChain((OBJECTHEADER*)pEnumObj);
-	if (pEnumObj->pEnum != NULL) {
-	    HRESULT res = pEnumObj->pEnum->Release();
-	    CheckOleError(pEnumObj->stash, res);
-	}
+	if (pEnumObj->pEnum != NULL)
+	    pEnumObj->pEnum->Release();
 	Safefree(pEnumObj);
     }
     XSRETURN_EMPTY;
@@ -2444,10 +2476,7 @@ PPCODE:
     if (pEnumObj == NULL)
 	XSRETURN_UNDEF;
 
-    IV count = 1;
-    if (items > 1)
-	count = SvIV(ST(1));
-
+    int count = (items > 1) ? SvIV(ST(1)) : 1;
     if (count < 1) {
 	warn("Win32::OLE::Enum::Next: invalid Count %ld", count);
 	DEBUGBREAK;
@@ -2461,7 +2490,7 @@ PPCODE:
 	sv = NextEnumElement(pEnumObj->pEnum, pEnumObj->stash);
 	if (!SvOK(sv))
 	    break;
-	if (!SvREADONLY(sv))
+	if (!SvIMMORTAL(sv))
 	    sv_2mortal(sv);
 	if (GIMME_V == G_ARRAY)
 	    XPUSHs(sv);
@@ -2483,7 +2512,7 @@ PPCODE:
     SetLastOleError(pEnumObj->stash);
     HRESULT res = pEnumObj->pEnum->Reset();
     CheckOleError(pEnumObj->stash, res);
-    ST(0) = (res == S_OK) ? &sv_yes : &sv_no;
+    ST(0) = boolSV(res == S_OK);
     XSRETURN(1);
 }
 
@@ -2496,13 +2525,11 @@ PPCODE:
     if (pEnumObj == NULL)
 	XSRETURN_NO;
 
-    IV count = 1;
-    if (items > 1)
-	count = SvIV(ST(1));
     SetLastOleError(pEnumObj->stash);
+    int count = (items > 1) ? SvIV(ST(1)) : 1;
     HRESULT res = pEnumObj->pEnum->Skip(count);
     CheckOleError(pEnumObj->stash, res);
-    ST(0) = (res == S_OK) ? &sv_yes : &sv_no;
+    ST(0) = boolSV(res == S_OK);
     XSRETURN(1);
 }
 
@@ -2523,7 +2550,8 @@ PPCODE:
     HRESULT res;
     WINOLEVARIANTOBJECT *pVarObj;
 
-    Initialize();
+    // XXX Initialize should be superfluous here
+    // Initialize();
     SetLastOleError(stash);
 
     New(0, pVarObj, 1, WINOLEVARIANTOBJECT);

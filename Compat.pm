@@ -4,7 +4,7 @@
 # This file is based on ../lib/OLE.pm from ActiveState build 315.
 
 # Compatibility notes:
-# - GetObject -> GetActiveObjects
+# - GetObject -> GetActiveObject
 # - keys %$collection -> Win32::OLE::Enum->All($collection)
 # - "unnamed" default method retries
 

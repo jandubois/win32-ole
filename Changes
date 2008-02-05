@@ -1,9 +1,17 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0615
+	- use SvIMMORTAL instead of SvREADONLY where applicable
+	- use newCONSTSUB in Win32::OLE::Const to define inlineable functions
+
+0.0614
+	- devel/dumprot.cpp removed, use IROTVIEW instead :-)
+	- COSERVERINFO hack removed, requires MSC++ 4.2b or later now
+
 0.0613
 	- WinOleEnum objects where never Safefree()d before
 	- New Initialize/Uninitialize class methods. Uninitialize zombifies all
-	  OLE objects an calls OleUninitialize.
+	  OLE objects and then calls OleUninitialize.
 
 0.0612
 	- new Win32::OLE->SpinMessageLoop() class method

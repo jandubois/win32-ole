@@ -44,11 +44,6 @@
 
 - Caching of method dispids should be done on class basis, not per object.
 
-- Add a testcase for the "unnamed" method call to ole.t
-  Add testcases for the Win32::OLE::Variant class
-
-- Create OLE tutorial with better examples
-
 - Make OLE.xs thread-safe
 
 - Provide support for OLE events, if possible

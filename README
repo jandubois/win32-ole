@@ -2,7 +2,7 @@ This is a port of the OLE extensions distributed by Activeware
 to the official perl distribution on Win32.  You will need
 Perl version 5.004_01 or later to use this.
 
-Installation is simple: you will need Visual C++ 2.x or above,
+Installation is simple: you will need Visual C++ 4.2b or above,
 or Borland C++ 4.02 or above.
 
 Do:

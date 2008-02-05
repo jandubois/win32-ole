@@ -9,28 +9,20 @@ use Win32::Registry;
 
 sub import {
     my ($self,$name,$major,$minor,$language,$codepage) = @_;
-    return unless defined($name) && $name !~ /^\s*$/;
-    my $callpkg = caller(0);
-
-    my $const = $self->Load($name,$major,$minor,$language);
-    while (defined(my $key = each %$const)) {
-	# export only valid variable names
-	next unless $key =~ /^[a-zA-Z_][a-zA-Z0-9_]*$/;
-	# old version:
-	#   no strict 'refs';
-	#   *{"${callpkg}::${key}"} = \$const->{$key};
-	my $Value = $const->{$key};
-	$Value = "\"$Value\"" unless $Value =~ /^\d+$/;
-	eval "sub ${callpkg}::${key} { $Value; }";
-    }
+    $self->Load($name,$major,$minor,$language,$codepage,scalar caller);
 }
 
 sub Load {
-    my ($pack,$name,$major,$minor,$language,$codepage) = @_;
+    my ($pack,$name,$major,$minor,$language,$codepage,$caller) = @_;
     undef $minor unless defined $major;
 
-    return _Load($name,undef,undef,undef,undef,undef)
+    return _Load($name,undef,undef,undef,undef,undef,undef)
       if UNIVERSAL::isa($name,'Win32::OLE');
+
+    unless (defined($name) && $name !~ /^\s*$/) {
+	carp "Win32::OLE::Const->Load: No or invalid type library name";
+	return;
+    }
 
     my ($hTypelib,$hClsid,$hVersion,$hLangid);
     my @found;
@@ -67,7 +59,7 @@ sub Load {
 		my $filename;
 		$hLangid->QueryValue('win32',$filename);
 		$hLangid->Close;
-		push @found, [$clsid,$maj,$min,$langid,$codepage,$filename];
+		push @found, [$clsid,$maj,$min,$langid,$filename];
 	    }
 	    $hVersion->Close;
 	}
@@ -91,7 +83,7 @@ sub Load {
     } @found;
 
     #printf "Loading %s\n", join(' ', @{$found[0]});
-    return _Load(@{$found[0]});
+    return _Load(@{$found[0]},$codepage,$caller);
 }
 
 1;
@@ -195,7 +187,7 @@ The last example uses an OLE object to specify the type library:
 
     use Win32::OLE;
     use Win32::OLE::Const;
-    my $Excel = Win32::OLE->new('Excel.Application', sub {$_[0]->Quit;});
+    my $Excel = Win32::OLE->new('Excel.Application', 'Quit');
     my $xl = Win32::OLE::Const->Load($Excel);
 
 

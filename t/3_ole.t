@@ -151,14 +151,20 @@ print "# Orientation is \"$Value\"\n";
 print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
 
-# 10. Call a method with a magical scalar as argument
+# 10. Test Win32::OLE::Const->Load method
+my $xl = Win32::OLE::Const->Load('Microsoft Excel');
+printf "# xlLandscape is \"%s\"\n", $xl->{'xlLandscape'};
+print "not " unless $xl->{'xlLandscape'} == 2;
+printf "ok %d\n", ++$Test;
+
+# 11. Call a method with a magical scalar as argument
 my $Sheets = $Book->Worksheets;
 my $Name = $Book->Worksheets($Sheets->{Count})->{Name};
 print "# Name is \"$Name\"\n";
 print "not " unless $Name;
 printf "ok %d\n", ++$Test;
 
-# 11. Set values of some cells and retrieve a value
+# 12. Set values of some cells and retrieve a value
 $Sheet->{Name} = 'My Sheet #1';
 foreach my $i (1..10) {
   $Sheet->Cells($i,$i)->{Value} = $i**2;
@@ -171,69 +177,69 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Cell->{Value} == 25;
 printf "ok %d\n", ++$Test;
 
-# 12. Check if overloading conversion to number/string works
+# 13. Check if overloading conversion to number/string works
 print "# Value is \"$Cell\"\n";
 print "not " unless $Cell == 25;
 printf "ok %d\n", ++$Test;
 
-# 13. Test the valof function
+# 14. Test the valof function
 my $RefOf = $Cell;
 my $ValOf = valof $Cell;
 $Cell->{Value} = 27;
 print "not " unless $ValOf == 25 && $RefOf == 27;
 printf "ok %d\n", ++$Test;
 
-# 14. Set a cell range from an array ref containing an IV, PV and NV
+# 15. Set a cell range from an array ref containing an IV, PV and NV
 $Sheet->Range("A8:C9")->{Value} = [[undef, 'Camel'],[42, 'Perl', 3.1415]];
 $Value = $Sheet->Cells(9,2) . $Sheet->Cells(8,2);
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'PerlCamel';
 printf "ok %d\n", ++$Test;
 
-# 15. Retrieve float value (esp. interesting in foreign locales)
+# 16. Retrieve float value (esp. interesting in foreign locales)
 $Value = $Sheet->Cells(9,3)->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless $Value == 3.1415;
 printf "ok %d\n", ++$Test;
 
-# 16. Retrieve a 0 dimensional range; check array data structure
+# 17. Retrieve a 0 dimensional range; check array data structure
 $Value = $Sheet->Range("B8")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " if ref $Value;
 printf "ok %d\n", ++$Test;
 
-# 17. Retrieve a 1 dimensional row range; check array data structure
+# 18. Retrieve a 1 dimensional row range; check array data structure
 $Value = $Sheet->Range("B8:C8")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 1 && ref $$Value[0];
 printf "ok %d\n", ++$Test;
 
-# 18. Retrieve a 1 dimensional column range; check array data structure
+# 19. Retrieve a 1 dimensional column range; check array data structure
 $Value = $Sheet->Range("B8:B9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
-# 19. Retrieve a 2 dimensional range; check array data structure
+# 20. Retrieve a 2 dimensional range; check array data structure
 $Value = $Sheet->Range("B8:C9")->{Value};
 printf "# Values are: \"%s\"\n", stringify($Value);
 print "not " unless @$Value == 2 && ref $$Value[0] && ref $$Value[1];
 printf "ok %d\n", ++$Test;
 
-# 20. Check contents of 2 dimensional array
+# 21. Check contents of 2 dimensional array
 $Value = $$Value[0][0] . $$Value[1][0] . $$Value[1][1];
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'CamelPerl3.1415';
 printf "ok %d\n", ++$Test;
 
-# 21. Set a cell formula and retrieve calculated value
+# 22. Set a cell formula and retrieve calculated value
 $Sheet->Cells(3,1)->{Formula} = '=PI()';
 $Value = $Sheet->Cells(3,1)->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
-# 22. Add single worksheet and check that worksheet count is incremented
+# 23. Add single worksheet and check that worksheet count is incremented
 my $Count = $Sheets->{Count};
 $Book->Worksheets->Add;
 $Value = $Sheets->{Count};
@@ -241,7 +247,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+1;
 printf "ok %d\n", ++$Test;
 
-# 23. Add 2 more sheets, optional arguments are omitted
+# 24. Add 2 more sheets, optional arguments are omitted
 $Count = $Sheets->{Count};
 $Book->Worksheets->Add(undef,undef,2);
 $Value = $Sheets->{Count};
@@ -249,7 +255,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 24. Add 3 more sheets before sheet 2 using a named argument
+# 25. Add 3 more sheets before sheet 2 using a named argument
 $Count = $Sheets->{Count};
 $Book->Worksheets(2)->{Name} = 'XYZZY';
 $Sheets->Add($Book->Worksheets(2), {Count => 3});
@@ -258,13 +264,13 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+3;
 printf "ok %d\n", ++$Test;
 
-# 25. Previous sheet 2 should now be sheet 5
+# 26. Previous sheet 2 should now be sheet 5
 $Value = $Book->Worksheets(5)->{Name};
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'XYZZY';
 printf "ok %d\n", ++$Test;
 
-# 26. Add 2 more sheets at the end using 2 named arguments
+# 27. Add 2 more sheets at the end using 2 named arguments
 $Count = $Sheets->{Count};
 # Following line doesn't work with Excel 7 (Seems like an Excel bug?)
 # $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count})});
@@ -272,7 +278,7 @@ $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count}-1)});
 print "not " unless $Sheets->{Count} == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 27. Number of objects in an enumeration must match its "Count" property
+# 28. Number of objects in an enumeration must match its "Count" property
 my @Sheets = in $Sheets;
 printf "# \$Sheets->{Count} is %d\n", $Sheets->{Count};
 printf "# scalar(\@Sheets) is %d\n", scalar(@Sheets);
@@ -282,7 +288,7 @@ foreach my $Sheet (@Sheets) {
 print "not " unless $Sheets->{Count} == @Sheets;
 printf "ok %d\n", ++$Test;
 
-# 28. Enumerate all application properties using the C<keys> function
+# 29. Enumerate all application properties using the C<keys> function
 my @Properties = keys %$Excel;
 printf "# Number of Excel application properties: %d\n", scalar(@Properties);
 $Value = grep /^(Parent|Xyzzy|Name)$/, @Properties;
@@ -290,7 +296,7 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
 
-# 29. Translate character from ANSI -> OEM
+# 30. Translate character from ANSI -> OEM
 my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
 print "# Excel version is $Version\n";
 
@@ -309,15 +315,15 @@ print "# ANSI is \"$ANSI\" and OEM is \"$OEM\"\n";
 print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
 printf "ok %d\n", ++$Test;
 
-# 30. Save workbook to file
+# 31. Save workbook to file
 print "not " unless $Book->SaveAs($File);
 printf "ok %d\n", ++$Test;
 
-# 31. Check if output file exists.
+# 32. Check if output file exists.
 print "not " unless -f $File;
 printf "ok %d\n", ++$Test;
 
-# 32. Access the same file object through a moniker.
+# 33. Access the same file object through a moniker.
 $Obj = Win32::OLE->GetObject($File);
 for ($Count=0 ; $Count < 5 ; ++$Count) {
     my $Type = Win32::OLE->QueryObjectType($Obj);
@@ -332,7 +338,7 @@ print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
 
-# 33. Get return value as Win32::OLE::Variant object
+# 34. Get return value as Win32::OLE::Variant object
 $Cell = $Obj->Worksheets('My Sheet #1')->Range('B9');
 my $Variant = Win32::OLE::Variant->new(VT_EMPTY, 0);
 $Cell->Dispatch('Value', $Variant);
@@ -340,7 +346,7 @@ printf "# Variant is (%s,%s)\n", $Variant->Type, $Variant->Value;
 print "not " unless $Variant->Type == VT_BSTR && $Variant->Value eq 'Perl';
 printf "ok %d\n", ++$Test;
 
-# 34. Use clsid string to start OLE server
+# 35. Use clsid string to start OLE server
 undef $Value;
 eval {
     use Win32::Registry;
@@ -355,7 +361,7 @@ print "# Object application is $Value\n";
 print "not " unless $Value eq 'Excel';
 printf "ok %d\n", ++$Test;
 
-# 35. Use DCOM syntax to start server (on local machine though)
+# 36. Use DCOM syntax to start server (on local machine though)
 #     This might fail (on Win95/NT3.5 if DCOM support is not installed.
 $Obj = Win32::OLE->new([Win32::NodeName, 'Excel.Application'], 'Quit');
 $Value = (Win32::OLE->QueryObjectType($Obj))[0];
@@ -364,5 +370,5 @@ print "not " unless $Value eq 'Excel';
 printf "ok %d\n", ++$Test;
 
 
-# 36. Terminate server instance ("ok $Test\n" printed by Excel destructor)
+# 37. Terminate server instance ("ok $Test\n" printed by Excel destructor)
 exit;

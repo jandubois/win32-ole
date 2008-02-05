@@ -10,7 +10,6 @@ OLE.xs
 README
 ToDo
 Variant.pm         The Win32::OLE::Variant module: VARIANT variables
-devel/dumprot.cpp  Debugging tool: dump Running Object Table
 eg/constants.pl    Sample script prints all Excel defined constants
 eg/properties.pl   Sample script prints all Excel application properties
 eg/typelibs.pl     Sample script prints all registered typelib names
