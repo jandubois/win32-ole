@@ -268,24 +268,34 @@ QueryPkgVar(HV *stash, char *var, STRLEN len, IV def)
 }
 
 void
-ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
+SetLastOleError(HV *stash, HRESULT res, char *pszMsg)
 {
-    dSP;
-
     /* Find $Win32::OLE::LastError */
     SV *sv = sv_2mortal(newSVpv(HvNAME(stash), 0));
     sv_catpvn(sv, "::", 2);
     sv_catpvn(sv, LASTERR_NAME, LASTERR_LEN);
     SV *lasterr = perl_get_sv(SvPV(sv, na), TRUE);
     if (lasterr == NULL) {
-	warn("Win32::OLE: ReportOleError: couldnot create package variable %s",
+	warn("Win32::OLE: SetLastOleError: couldnot create package variable %s",
 	     LASTERR_NAME);
 	DEBUGBREAK;
+	return;
     }
 
-    IV OleWarn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
+    sv_setiv(lasterr, (IV)res);
+    if (pszMsg != NULL) {
+	sv_setpv(lasterr, pszMsg);
+	SvIOK_on(lasterr);
+    }
+}
 
-    SvCUR_set(sv, 0);
+void
+ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
+{
+    dSP;
+
+    IV OleWarn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
+    SV *sv = sv_2mortal(newSVpv("",0));
 
     /* start with exception info */
     if (pExcepInfo != NULL && (pExcepInfo->bstrSource != NULL ||
@@ -373,11 +383,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 	}
     }
 
-    if (lasterr != NULL) {
-	sv_setiv(lasterr, (IV)res);
-	sv_setpv(lasterr, SvPVX(sv));
-	SvIOK_on(lasterr);
-    }
+    SetLastOleError(stash, res, SvPV(sv, na));
 
     if (OleWarn > 1 || (OleWarn == 1 && dowarn)) {
 	PUSHMARK(sp) ;
@@ -1160,11 +1166,12 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 	return res;
     }
 
-    if (V_VT(pVariant) == (VT_VARIANT|VT_BYREF))
+    while (V_VT(pVariant) == (VT_VARIANT|VT_BYREF))
 	pVariant = V_VARIANTREF(pVariant);
 
     switch(V_VT(pVariant) & ~VT_BYREF)
     {
+    case VT_VARIANT: /* invalid, should never happen */
     case VT_EMPTY:
     case VT_NULL:
 	/* return "undef" */
@@ -1250,7 +1257,6 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
     case VT_DATE:
     case VT_CY:
-    case VT_VARIANT:
     default:
     {
 	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
@@ -1440,6 +1446,8 @@ PPCODE:
     SV *destroy = NULL;
     UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
+    SetLastOleError(stash, S_OK, NULL);
+
     if (items == 3)
 	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
 
@@ -1572,6 +1580,8 @@ PPCODE:
     if (pObj == NULL) {
 	XSRETURN(1);
     }
+
+    SetLastOleError(pObj->stash, S_OK, NULL);
 
     LCID lcid = QueryPkgVar(pObj->stash, LCID_NAME, LCID_LEN, lcidDefault);
     UINT cp = QueryPkgVar(pObj->stash, CP_NAME, CP_LEN, cpDefault);
@@ -1718,7 +1728,7 @@ PPCODE:
     }
     else {
 	/* use more specific error code from exception when available */
-	if (res == DISP_E_EXCEPTION && excepinfo.scode != S_OK)
+	if (res == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
 	    res = excepinfo.scode;
 
 	err = sv_newmortal();
@@ -1779,6 +1789,8 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
+    SetLastOleError(stash, S_OK, NULL);
+
     buffer = SvPV(progid, length);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0]))
@@ -1837,6 +1849,8 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
+    SetLastOleError(stash, S_OK, NULL);
+
     res = CreateBindCtx(0, &pBindCtx);
     if (CheckOleError(stash, res, NULL, NULL))
 	XSRETURN_UNDEF;
@@ -1885,6 +1899,8 @@ PPCODE:
     WINOLEOBJECT *pObj = GetOleObject(object);
     if (pObj == NULL)
 	XSRETURN_UNDEF;
+
+    SetLastOleError(pObj->stash, S_OK, NULL);
 
     ITypeInfo *pTypeInfo;
     ITypeLib *pTypeLib;
@@ -1977,6 +1993,8 @@ PPCODE:
     if (pObj == NULL)
 	XSRETURN_EMPTY;
 
+    SetLastOleError(pObj->stash, S_OK, NULL);
+
     ST(0) = &sv_undef;
     VariantInit(&result);
     VariantInit(&propName);
@@ -2051,6 +2069,8 @@ PPCODE:
     if (pObj == NULL)
 	XSRETURN_EMPTY;
 
+    SetLastOleError(pObj->stash, S_OK, NULL);
+
     LCID lcid = QueryPkgVar(pObj->stash, LCID_NAME, LCID_LEN, lcidDefault);
     UINT cp = QueryPkgVar(pObj->stash, CP_NAME, CP_LEN, cpDefault);
 
@@ -2080,8 +2100,14 @@ PPCODE:
 
     res = SetVariantFromSV(value, &propertyValue[0], cp);
     if (SUCCEEDED(res)) {
-	res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, 
-				      DISPATCH_PROPERTYPUT,
+	USHORT wFlags = DISPATCH_PROPERTYPUT;
+
+	/* object are passed by reference */
+	VARTYPE vt = V_VT(&propertyValue[0]);
+	if (vt == VT_DISPATCH || vt == VT_UNKNOWN)
+	    wFlags = DISPATCH_PROPERTYPUTREF;
+
+	res = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
 				      &dispParams, NULL, &excepinfo, &argErr);
 	if (FAILED(res)) {
 	    err = sv_newmortal();
@@ -2112,6 +2138,8 @@ PPCODE:
     DBG(("FIRST/NEXTKEY (%d) called, pObj=%p\n", ix, pObj));
     if (pObj == NULL)
 	XSRETURN_UNDEF;
+
+    SetLastOleError(pObj->stash, S_OK, NULL);
 
     switch (ix)
     {
@@ -2163,6 +2191,8 @@ PPCODE:
     LCID lcid = lcidDefault;
     UINT cp = cpDefault;
     HV *stash = gv_stashpv(szWINOLE, TRUE);
+
+    SetLastOleError(stash, S_OK, NULL);
 
     if (SvIOK(locale))
 	lcid = SvIV(locale);
@@ -2301,15 +2331,19 @@ PPCODE:
     if (ix == 0) { /* new */
 	WINOLEOBJECT *pObj = GetOleObject(object);
 	if (pObj != NULL) {
+	    SetLastOleError(pObj->stash, S_OK, NULL);
 	    pEnumObj->pEnum = CreateEnumVARIANT(pObj);
 	    pEnumObj->stash = pObj->stash;
 	}
     }
     else { /* Clone */
 	WINOLEENUMOBJECT *pOriginal = GetOleEnumObject(self);
-	HRESULT res = pOriginal->pEnum->Clone(&pEnumObj->pEnum);
-	CheckOleError(pOriginal->stash, res, NULL, NULL);
-	pEnumObj->stash = pOriginal->stash;
+	if (pOriginal != NULL) {
+	    HRESULT res = pOriginal->pEnum->Clone(&pEnumObj->pEnum);
+	    SetLastOleError(pOriginal->stash, S_OK, NULL);
+	    CheckOleError(pOriginal->stash, res, NULL, NULL);
+	    pEnumObj->stash = pOriginal->stash;
+	}
     }
 
     if (pEnumObj->pEnum == NULL) {
@@ -2331,9 +2365,11 @@ DESTROY(self)
 PPCODE:
 {
     WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
-    RemoveFromObjectChain((OBJECTHEADER*)pEnumObj);
-    HRESULT res = pEnumObj->pEnum->Release();
-    CheckOleError(pEnumObj->stash, res, NULL, NULL);
+    if (pEnumObj != NULL) {
+	RemoveFromObjectChain((OBJECTHEADER*)pEnumObj);
+	HRESULT res = pEnumObj->pEnum->Release();
+	CheckOleError(pEnumObj->stash, res, NULL, NULL);
+    }
     XSRETURN_EMPTY;
 }
 
@@ -2343,6 +2379,9 @@ Next(self,...)
 PPCODE:
 {
     WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    if (pEnumObj == NULL)
+	XSRETURN_UNDEF;
+
     IV count = 1;
     if (items > 1)
 	count = SvIV(ST(1));
@@ -2352,6 +2391,8 @@ PPCODE:
 	DEBUGBREAK;
 	count = 1;
     }
+
+    SetLastOleError(pEnumObj->stash, S_OK, NULL);
 
     SV *sv = NULL;
     while (count-- > 0) {
@@ -2374,6 +2415,10 @@ Reset(self)
 PPCODE:
 {
     WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    if (pEnumObj == NULL)
+	XSRETURN_NO;
+
+    SetLastOleError(pEnumObj->stash, S_OK, NULL);
     HRESULT res = pEnumObj->pEnum->Reset();
     CheckOleError(pEnumObj->stash, res, NULL, NULL);
     ST(0) = (res == S_OK) ? &sv_yes : &sv_no;
@@ -2386,9 +2431,13 @@ Skip(self,...)
 PPCODE:
 {
     WINOLEENUMOBJECT *pEnumObj = GetOleEnumObject(self);
+    if (pEnumObj == NULL)
+	XSRETURN_NO;
+
     IV count = 1;
     if (items > 1)
 	count = SvIV(ST(1));
+    SetLastOleError(pEnumObj->stash, S_OK, NULL);
     HRESULT res = pEnumObj->pEnum->Skip(count);
     CheckOleError(pEnumObj->stash, res, NULL, NULL);
     ST(0) = (res == S_OK) ? &sv_yes : &sv_no;
@@ -2411,6 +2460,8 @@ PPCODE:
     HV *stash = GetStash(self);
     HRESULT res;
     WINOLEVARIANTOBJECT *pVarObj;
+
+    SetLastOleError(stash, S_OK, NULL);
 
     New(0, pVarObj, 1, WINOLEVARIANTOBJECT);
     VariantInit(&pVarObj->variant);
@@ -2578,11 +2629,13 @@ PPCODE:
 
     ST(0) = &sv_undef;
     if (pVarObj != NULL) {
+	HV *stash = GetStash(self);
+	SetLastOleError(stash, S_OK, NULL);
 	ST(0) = sv_newmortal();
 	if (ix == 0)
 	    sv_setiv(ST(0), V_VT(&pVarObj->variant));
 	else
-	    SetSVFromVariant(&pVarObj->variant, ST(0), SvSTASH(SvRV(self)));
+	    SetSVFromVariant(&pVarObj->variant, ST(0), stash);
     }
     XSRETURN(1);
 }
@@ -2602,6 +2655,7 @@ PPCODE:
 	HV *stash = GetStash(self);
 	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
 
+	SetLastOleError(stash, S_OK, NULL);
 	VariantInit(&variant);
 	res = VariantChangeTypeEx(&variant, &pVarObj->variant, lcid, 0, type);
 	if (SUCCEEDED(res)) {
@@ -2627,6 +2681,7 @@ PPCODE:
 	HV *stash = GetStash(self);
 	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
 
+	SetLastOleError(stash, S_OK, NULL);
 	/* XXX: Does it work with VT_BYREF? */
 	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant, 
 				  lcid, 0, type);
@@ -2653,6 +2708,7 @@ PPCODE:
 	VARIANT *pVariant = &pVarObj->variant;
 	HRESULT res = S_OK;
 
+	SetLastOleError(stash, S_OK, NULL);
 	VariantInit(&Variant);
 	if ((V_VT(pVariant) & ~VT_BYREF) != VT_BSTR) {
 	    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);

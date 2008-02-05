@@ -1,5 +1,11 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0611
+	- Win32::OLE::Tie::Store use DISPATCH_PROPERTYPUTREF for objects
+	  (as suggested by Steve Biondi)
+	- all OLE calls now automatically reset LastError
+	- added devel/dumprot.cpp tool to distribution
+
 0.0610
 	- Win32::OLE::Const now loads consts from all TKINDs and not only ENUMs
 	- Win32::OLE::Variants are actually freed during DESTROY now

@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0610';
+$VERSION = '0.0611';
 
 use Carp;
 use Exporter;
@@ -32,7 +32,7 @@ OVERLOAD
 
 bootstrap Win32::OLE;
 
-$Warn = $^W;
+$Warn = 1;
 
 sub CP_ACP {0;}    # ANSI codepage
 sub CP_OEMCP {1;}  # OEM codepage
@@ -253,12 +253,12 @@ case use <undef> or C<''> as the method name.
 =item Win32::OLE->LastError()
 
 The C<LastError> class method returns the last recorded OLE
-error. This is dual value like the C<$!> variable: in a numeric
+error. This is a dual value like the C<$!> variable: in a numeric
 context it returns the error number and in a string context it returns
 the error message.
 
-The last OLE error is not automatically reset by a successful OLE
-call. The numeric value can be explicitly set by a call (which will
+The last OLE error is automatically reset by a successful OLE
+call. The numeric value can also explicitly be set by a call (which will
 discard the string value):
 
 	Win32::OLE->LastError(0);
