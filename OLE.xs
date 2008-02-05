@@ -22,8 +22,6 @@
  *
  */
 
-#define USE_SV_PERINTERP
-
 #ifdef XS_VERSION
 #   define MY_VERSION "Win32::OLE::" XS_VERSION
 #else
@@ -124,7 +122,7 @@ typedef struct
 }   PERINTERP;
 
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
-#    if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
+#    if (PATCHLEVEL == 4) && (SUBVERSION < 68)
 #       define dPERINTERP                                                 \
            SV *interp = perl_get_sv(MY_VERSION, FALSE);                   \
            if (interp == NULL || !SvIOK(interp))                          \
@@ -1598,9 +1596,12 @@ Uninitialize(PERINTERP *pInterp, int magic)
     LeaveCriticalSection(&g_CriticalSection);
 
     if (magic == WINOLE_MAGIC) {
-#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
-#   if !((PATCHLEVEL == 4) && (SUBVERSION < 65)) && !defined(USE_SV_PERINTERP)
+    // Yes, we DO leak the critical section and memory block for earlier 
+    // versions of Perl (because they might still be referenced during the
+    // global object destruction phase).
+#if (PATCHLEVEL > 4) || (SUBVERSION >= 68)
 	DeleteCriticalSection(&g_CriticalSection);
+#   if defined(MULTIPLICITY) || defined(PERL_OBJECT)
 	Safefree(pInterp);
 #   endif
 #endif
@@ -1622,7 +1623,7 @@ Bootstrap(void)
     PERINTERP *pInterp;
     New(0, pInterp, 1, PERINTERP);
 
-#   if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
+#   if (PATCHLEVEL == 4) && (SUBVERSION < 68)
     SV *sv = perl_get_sv(MY_VERSION, TRUE);
 #   else
     SV *sv = *hv_fetch(modglobal, MY_VERSION, sizeof(MY_VERSION)-1, TRUE);
@@ -1638,7 +1639,7 @@ Bootstrap(void)
     g_bInitialized = FALSE;
     InitializeCriticalSection(&g_CriticalSection);
 
-#   if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
+#if (PATCHLEVEL == 4) && (SUBVERSION < 68)
     SV *cmd = sv_2mortal(newSVpv("",0));
     sv_setpvf(cmd, "END { %s->Uninitialize(%d); }", szWINOLE, WINOLE_MAGIC );
     perl_eval_sv(cmd, TRUE);

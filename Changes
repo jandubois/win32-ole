@@ -1,8 +1,12 @@
 Revision history for Perl extension Win32::OLE.
 
-0.0809  (unreleased)
+0.0810  (unreleased)
+	- Removed USE_SV_PERINTERP, perl_atexit() only used for 5.004_68 and up
+
+0.0809  (unreleased) identical to 0.0808
 
 0.0808  (unreleased)
+	- Introduced USE_SV_PERINTERP to switch off perl_atexit() usage
 
 0.0807  (unreleased)
 	- OleInitialize repleaced by CoInitializeEx(NULL, COINIT_MULTITHREADED)
