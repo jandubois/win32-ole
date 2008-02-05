@@ -184,6 +184,53 @@ newCONSTSUB(HV *stash, char *name, SV *sv)
 /* forward declarations */
 HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
 
+HRESULT
+CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
+{
+    HKEY hKeyLocalMachine;
+    HKEY hKeyProgID;
+    LONG err;
+    HRESULT res = S_OK;
+
+    err = RegConnectRegistry(pszHost, HKEY_LOCAL_MACHINE, &hKeyLocalMachine);
+    if (err != ERROR_SUCCESS) 
+	return HRESULT_FROM_WIN32(err);
+
+    SV *subkey = newSVpv("SOFTWARE\\Classes\\", 0);
+    sv_catpv(subkey, pszProgID);
+    sv_catpv(subkey, "\\CLSID");
+
+    err = RegOpenKeyEx(hKeyLocalMachine, SvPV(subkey, na), 0, KEY_READ,
+		       &hKeyProgID);
+    if (err != ERROR_SUCCESS) 
+	res = HRESULT_FROM_WIN32(err);
+    else {
+	DWORD dwType;
+	char szCLSID[100];
+	DWORD dwLength = sizeof(szCLSID);
+
+	err = RegQueryValueEx(hKeyProgID, "", NULL, &dwType, 
+			      (unsigned char*)&szCLSID, &dwLength);
+	if (err != ERROR_SUCCESS)
+	    res = HRESULT_FROM_WIN32(err);
+	else if (dwType == REG_SZ) {
+	    OLECHAR wszCLSID[sizeof(szCLSID)];
+
+	    MultiByteToWideChar(CP_ACP, 0, szCLSID, -1, 
+				wszCLSID, sizeof(szCLSID));
+	    res = CLSIDFromString(wszCLSID, pCLSID);
+	}
+	else
+	    res = HRESULT_FROM_WIN32(ERROR_CANTREAD);
+
+	RegCloseKey(hKeyProgID);
+    }
+    
+    SvREFCNT_dec(subkey);
+    RegCloseKey(hKeyLocalMachine);
+    return res;
+}
+
 /* The following strategy is used to avoid the limitations of hardcoded
  * buffer sizes: Conversion between wide char and multibyte strings
  * is performed by GetMultiByte and GetWideChar respectively. The
@@ -609,7 +656,11 @@ GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
 {
     if (sv_isobject(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
-	if (psv != NULL) {
+
+	if (SvGMAGICAL(*psv))
+	    mg_get(*psv);
+
+	if (psv != NULL && SvIOK(*psv)) {
 	    WINOLEOBJECT *pObj = (WINOLEOBJECT*)SvIV(*psv);
 
 	    DBG(("GetOleObject = |%lx|\n", pObj));
@@ -1401,13 +1452,11 @@ DllMain
 {
     switch (fdwReason) {
     case DLL_PROCESS_ATTACH:
-	DBG(("Win32::OLE DLL_PROCESS_ATTACH\n"));
 	InitializeCriticalSection(&g_CriticalSection);
 	break;
 
     case DLL_PROCESS_DETACH:
 	DeleteCriticalSection(&g_CriticalSection);
-	DBG(("Win32::OLE DLL_PROCESS_DETACH\n"));
 	break;
     }
 
@@ -1511,15 +1560,10 @@ new(...)
 PPCODE:
 {
     CLSID clsid;
+    IDispatch *pDispatch = NULL;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
-    unsigned int length;
-    char *buffer;
-    HKEY handle;
     HRESULT res;
-    FNCOCREATEINSTANCEEX *pfnCreateInstance = NULL;
-    COSERVERINFO ServerInfo;
-    OLECHAR ServerName[OLE_BUF_SIZ];
 
     if (CallObjectMethod(mark, ax, items, "new"))
 	return;
@@ -1543,62 +1587,98 @@ PPCODE:
 	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
 
     ST(0) = &sv_undef;
-    Zero(&ServerInfo, 1, COSERVERINFO);
 
-    /* DCOM spec: ['Servername', 'Program.ID'] */
-    if (SvROK(progid) && SvTYPE(SvRV(progid)) == SVt_PVAV) {
-	AV *av = (AV*)SvRV(progid);
-
-	/* DCOM might not exist on Win95 (and does not on NT 3.5) */
-	HMODULE hModule = GetModuleHandle("OLE32");
-	if (hModule != NULL) {
-	    pfnCreateInstance = (FNCOCREATEINSTANCEEX *)
-	                        GetProcAddress(hModule, "CoCreateInstanceEx");
-	}
-	if (pfnCreateInstance == NULL) {
-	    res = HRESULT_FROM_WIN32(ERROR_SERVICE_DOES_NOT_EXIST);
-	    ReportOleError(stash, res);
-	    XSRETURN(1);
-	}
-
-	SV *host = av_shift(av);
-	progid = av_shift(av);
-	buffer = SvPV(host, length);
-	ServerInfo.pwszName = GetWideChar(buffer, ServerName, OLE_BUF_SIZ, cp);
-    }
-
-    buffer = SvPV(progid, length);
-    pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
-    if (isalpha(pBuffer[0]))
-        res = CLSIDFromProgID(pBuffer, &clsid);
-    else
-        res = CLSIDFromString(pBuffer, &clsid);
-    ReleaseBuffer(pBuffer, Buffer);
-
-    if (SUCCEEDED(res)) {
-	IDispatch *pDispatch = NULL;
-
-	if (pfnCreateInstance == NULL || ServerInfo.pwszName == NULL) {
+    /* normal case: no DCOM */
+    if (!SvROK(progid) || SvTYPE(SvRV(progid)) != SVt_PVAV) {
+	pBuffer = GetWideChar(SvPV(progid, na), Buffer, OLE_BUF_SIZ, cp);
+	if (isalpha(pBuffer[0]))
+	    res = CLSIDFromProgID(pBuffer, &clsid);
+	else
+	    res = CLSIDFromString(pBuffer, &clsid);
+	ReleaseBuffer(pBuffer, Buffer);
+	if (SUCCEEDED(res)) {
 	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER, 
 				   IID_IDispatch, (void**)&pDispatch);
 	}
-	else {
-	    MULTI_QI multi_qi;
-	    Zero(&multi_qi, 1, MULTI_QI);
-	    multi_qi.pIID = &IID_IDispatch;
-
-	    res = pfnCreateInstance(clsid, NULL, CLSCTX_SERVER, &ServerInfo,
-				    1, &multi_qi);
-	    pDispatch = (IDispatch *)multi_qi.pItf;
-	}
-
-	if (SUCCEEDED(res)) {
+	if (!CheckOleError(stash, res)) {
 	    ST(0) = CreatePerlObject(stash, pDispatch, destroy);
 	    DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
 	}
+	XSRETURN(1);
     }
+
+
+    /* DCOM spec: ['Servername', 'Program.ID'] */
+    AV *av = (AV*)SvRV(progid);
+    SV *host = av_shift(av);
+    progid = av_shift(av);
+    if (av_len(av) != -1 || !SvPOK(progid)) {
+	warn("Win32::OLE->new: for DCOM use ['Machine', 'Prog.Id']");
+	XSRETURN(1);
+    }
+
+    /* dynamically determine proc address of function as
+     * DCOM might not exist on Win95 (and does not on NT 3.5) */
+    FNCOCREATEINSTANCEEX *pfnCreateInstance = NULL;
+    HMODULE hModule = GetModuleHandle("OLE32");
+    if (hModule != NULL) {
+	pfnCreateInstance = (FNCOCREATEINSTANCEEX*)
+	    GetProcAddress(hModule, "CoCreateInstanceEx");
+    }
+    if (pfnCreateInstance == NULL) {
+	res = HRESULT_FROM_WIN32(ERROR_SERVICE_DOES_NOT_EXIST);
+	ReportOleError(stash, res);
+	XSRETURN(1);
+    }
+
+    /* determine CLSID */
+    char *pszProgID = SvPV(progid, na);
+    char *pszHost = NULL;
+
+    /* '' (nullstring) or C<undef> go to local host */
+    if (SvPOK(host)) {
+	pszHost = SvPV(host, na);
+	if (*pszHost == '\0')
+	    pszHost = NULL;
+    }
+
+    pBuffer = GetWideChar(pszProgID, Buffer, OLE_BUF_SIZ, cp);
+    if (isalpha(pBuffer[0])) {
+	res = CLSIDFromProgID(pBuffer, &clsid);
+	if (FAILED(res)) 
+	    res = CLSIDFromRemoteRegistry(pszHost, pszProgID, &clsid);
+    }
+    else
+        res = CLSIDFromString(pBuffer, &clsid);
+    ReleaseBuffer(pBuffer, Buffer);
+    if (FAILED(res)) {
+	ReportOleError(stash, res);
+	XSRETURN(1);
+    }
+
+    /* setup COSERVERINFO & MULTI_QI parameters */
+    DWORD clsctx = CLSCTX_REMOTE_SERVER;
+    COSERVERINFO ServerInfo;
+    OLECHAR ServerName[OLE_BUF_SIZ];
+    MULTI_QI multi_qi;
+
+    Zero(&ServerInfo, 1, COSERVERINFO);
+    if (pszHost == NULL)
+	clsctx = CLSCTX_SERVER;
+    else
+	ServerInfo.pwszName = GetWideChar(pszHost, ServerName, OLE_BUF_SIZ, cp);
+
+    Zero(&multi_qi, 1, MULTI_QI);
+    multi_qi.pIID = &IID_IDispatch;
+
+    /* create instance on remote server */
+    res = pfnCreateInstance(clsid, NULL, clsctx, &ServerInfo, 1, &multi_qi);
     ReleaseBuffer(ServerInfo.pwszName, ServerName);
-    CheckOleError(stash, res);
+    if (!CheckOleError(stash, res)) {
+	pDispatch = (IDispatch*)multi_qi.pItf;
+	ST(0) = CreatePerlObject(stash, pDispatch, destroy);
+	DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
+    }
     XSRETURN(1);
 }
 

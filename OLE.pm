@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.08';
+$VERSION = '0.0802';
 
 use Carp;
 use Exporter;
@@ -153,12 +153,12 @@ package Win32::OLE::Tie;
 
 sub FETCH {
     my ($self,$key) = @_;
-    $self->Fetch($key, ~($^H & 0x200));
+    $self->Fetch($key, !($^H & 0x200));
 }
 
 sub STORE {
     my ($self,$key,$value) = @_;
-    $self->Store($key, $value, ~($^H & 0x200));
+    $self->Store($key, $value, !($^H & 0x200));
 }
 
 1;

@@ -363,7 +363,7 @@ printf "ok %d\n", ++$Test;
 
 # 36. Use DCOM syntax to start server (on local machine though)
 #     This might fail (on Win95/NT3.5 if DCOM support is not installed.
-$Obj = Win32::OLE->new([Win32::NodeName, 'Excel.Application'], 'Quit');
+$Obj = Win32::OLE->new(['', 'Excel.Application'], 'Quit');
 $Value = (Win32::OLE->QueryObjectType($Obj))[0];
 print "# Object application is $Value\n";
 print "not " unless $Value eq 'Excel';

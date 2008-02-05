@@ -1,5 +1,15 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0802
+	- Win32::OLE->new(['Machine', 'Prog.Id']) does a remote registry lookup
+	  if the Prog.Id is not registered locally.
+	- CLSCTX changed to CLSCTX_REMOTE_SERVER when a machine is specified.
+	  Otherwise OLE would still prefer a locall server when available.
+
+0.0801
+	- Win32::OLE::Tie::(FETCH|STORE) now interpret $^H correctly
+	- removed all Perl related stuff from DllMain
+
 0.08    Mon May 11 03:36:49 1998
 	- Make sure mg_get() gets called during GetOleObject()
 
