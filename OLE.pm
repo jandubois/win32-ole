@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0606';
+$VERSION = '0.0607';
 
 use Carp;
 use Exporter;
@@ -101,8 +101,21 @@ sub AUTOLOAD {
 }
 
 sub in {
+    my @res;
     require Win32::OLE::Enum;
-    Win32::OLE::Enum->All($_[0]);
+    while (@_) {
+	my $this = shift;
+	if (UNIVERSAL::isa($this, 'Win32::OLE')) {
+	    push @res, Win32::OLE::Enum->All($this);
+	}
+	elsif (ref($this) eq 'ARRAY') {
+	    push @res, @$this;
+	}
+	else {
+	    push @res, $this;
+	}
+    }
+    return @res;
 }
 
 sub valof {

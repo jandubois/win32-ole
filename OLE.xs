@@ -229,7 +229,7 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 	DEBUGBREAK;
     }
 
-    IV warn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
+    IV OleWarn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
 
     SvCUR_set(sv, 0);
 
@@ -325,11 +325,11 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 	SvIOK_on(lasterr);
     }
 
-    if (warn > 1 || (warn == 1 && dowarn)) {
+    if (OleWarn > 1 || (OleWarn == 1 && dowarn)) {
 	PUSHMARK(sp) ;
 	XPUSHs(sv);
 	PUTBACK;
-	perl_call_pv(warn < 3 ? "Carp::carp" : "Carp::croak", G_DISCARD);
+	perl_call_pv(OleWarn < 3 ? "Carp::carp" : "Carp::croak", G_DISCARD);
     }
 
 }   /* ReportOleError */
@@ -1020,20 +1020,17 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
     if (V_ISARRAY(pVariant)) {
 	SAFEARRAY *psa = V_ARRAY(pVariant);
 	AV **pav;
-	VARIANT variant;
-	void *pData = &variant;
 	IV index;
 	long *pArrayIndex, *pLowerBound, *pUpperBound;
+	VARIANT variant;
 
 	int dim = SafeArrayGetDim(psa);
 
 	VariantInit(&variant);
-	V_VT(&variant) = V_VT(pVariant) & ~VT_ARRAY;
-	if (V_VT(&variant) != VT_VARIANT)
-	    pData = &V_UI1(&variant);
+	V_VT(&variant) = (V_VT(pVariant) & ~VT_ARRAY) | VT_BYREF;
 
 	/* convert 1-dim UI1 ARRAY to simple SvPV */
-	if (dim == 1 && V_VT(&variant) == VT_UI1) {
+	if (dim == 1 && (V_VT(pVariant) & ~VT_ARRAY) == VT_UI1) {
 	    char *pStr;
 	    long lLower, lUpper;
 
@@ -1061,30 +1058,33 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	Copy(pLowerBound, pArrayIndex, dim, long);
 
-	while (index >= 0) {
-	    res = SafeArrayGetElement(psa, pArrayIndex, pData);
-	    if (FAILED(res))
-		break;
-
-	    SV *val = newSVpv("",0);
-	    res = SetSVFromVariant(&variant, val, stash);
-	    VariantClear(&variant);
-	    if (FAILED(res)) {
-		SvREFCNT_dec(val);
-		break;
-	    }
-	    av_push(pav[dim-1], val);
-
-	    for (index = dim-1 ; index >= 0 ; --index) {
-		if (++pArrayIndex[index] <= pUpperBound[index])
+	res = SafeArrayLock(psa);
+	if (SUCCEEDED(res)) {
+	    while (index >= 0) {
+		res = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_BYREF(&variant));
+		if (FAILED(res))
 		    break;
 
-		pArrayIndex[index] = pLowerBound[index];
-		if (index > 0) {
-		    av_push(pav[index-1], newRV_noinc((SV*)pav[index]));
-		    pav[index] = newAV();
+		SV *val = newSVpv("",0);
+		res = SetSVFromVariant(&variant, val, stash);
+		if (FAILED(res)) {
+		    SvREFCNT_dec(val);
+		    break;
+		}
+		av_push(pav[dim-1], val);
+
+		for (index = dim-1 ; index >= 0 ; --index) {
+		    if (++pArrayIndex[index] <= pUpperBound[index])
+			break;
+
+		    pArrayIndex[index] = pLowerBound[index];
+		    if (index > 0) {
+			av_push(pav[index-1], newRV_noinc((SV*)pav[index]));
+			pav[index] = newAV();
+		    }
 		}
 	    }
+	    res = SafeArrayUnlock(psa);
 	}
 
 	for (index = 1 ; index < dim ; ++index)
@@ -1116,6 +1116,9 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
 
 	return res;
     }
+
+    if (V_VT(pVariant) == (VT_VARIANT|VT_BYREF))
+	pVariant = V_VARIANTREF(pVariant);
 
     switch(V_VT(pVariant) & ~VT_BYREF)
     {
