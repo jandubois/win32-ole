@@ -1,42 +1,42 @@
 Revision history for Perl extension Win32::OLE.
 
-0.0616
+0.08    Mon May 11 03:36:49 1998
 	- Make sure mg_get() gets called during GetOleObject()
 
-0.0615
+0.0615  (unreleased)
 	- use SvIMMORTAL instead of SvREADONLY where applicable
 	- use newCONSTSUB in Win32::OLE::Const to define inlineable functions
 
-0.0614
+0.0614  (unreleased)
 	- devel/dumprot.cpp removed, use IROTVIEW instead :-)
 	- COSERVERINFO hack removed, requires MSC++ 4.2b or later now
 
-0.0613
+0.0613  (unreleased)
 	- WinOleEnum objects where never Safefree()d before
 	- New Initialize/Uninitialize class methods. Uninitialize zombifies all
 	  OLE objects and then calls OleUninitialize.
 
-0.0612
+0.0612  (unreleased)
 	- new Win32::OLE->SpinMessageLoop() class method
 	- Messageloop will be emptied before OleUnitialize is called
 	  (thanks to Steve Glassman for finding this problem!)
 
-0.0611
+0.0611  (unreleased)
 	- Win32::OLE::Tie::Store use DISPATCH_PROPERTYPUTREF for objects
 	  (as suggested by Steve Biondi)
 	- all OLE calls now automatically reset LastError
 	- added devel/dumprot.cpp tool to distribution
 
-0.0610
+0.0610  (unreleased)
 	- Win32::OLE::Const now loads consts from all TKINDs and not only ENUMs
 	- Win32::OLE::Variants are actually freed during DESTROY now
 	- Misc. robustness fixes (VariantClear etc.)
 
-0.0609
+0.0609  (unreleased)
 	- Win32::OLE::LastError() returns $Win32::OLE::LastError
 	- misc COSERVERINFO fixes
 
-0.0608
+0.0608  (unreleased)
 	- use scode from excepinfo structure when available instead 
 	  of DISP_E_EXCEPTION (as suggested by Steve Glassman)
 	- misc. Get(WideChar|MultiByte) robustness enhancements
@@ -44,11 +44,11 @@ Revision history for Perl extension Win32::OLE.
 	-         "       allows specification of remote server name
 	-         "          "         "       of numeric class id
 
-0.0607
+0.0607  (unreleased)
 	- enhanced C<in> allows multiple args and supports array refs too
 	- SetSVFromVariant array bug fixes
 	
-0.0606
+0.0606  (unreleased)
 	- use SvTRUE instead of SvIV to convert SV to VARIANT
 	- REFCNT of returned SV for VT_ARRAY variant is now set correctly
 	- SAFEARRAYs of VT_DISPATCH and VT_BSTR (and VT_VARIANT containing
@@ -57,7 +57,7 @@ Revision history for Perl extension Win32::OLE.
 	  t/3_ole.t adjusted accordingly
 	- Win32::OLE::Enum->All doesn't call Reset anymore
 
-0.0605
+0.0605  (unreleased)
 	- Property enumeration now dereferences TKIND_COCLASS etc.
 	- Overloading in Win32::OLE now only enabled by OVERLOAD pseudotarget
 	- Win32::OLE::CreateObject function for compatibility w/"Learning Perl"
@@ -68,7 +68,7 @@ Revision history for Perl extension Win32::OLE.
 	- Sample file type converter script in eg/word2xxx.pl
 	- valof uses CP and LCID of arg class for variant conversion
 
-0.0604
+0.0604  (unreleased)
 	- New package variable Win32::OLE::Tie specifies 'Win32::OLE::Tie' class
 	- Win32::OLE::Tie FIRSTENUM/NEXTENUM added for compatibility mode
 	- Win32::OLE::Tie STORE/FETCH renamed. Added default method argument
@@ -84,7 +84,7 @@ Revision history for Perl extension Win32::OLE.
 	- new C<valof> function
 	- Win32::OLE objects overloaded conversion to strings and numbers
 
-0.0603
+0.0603  (unreleased)
 	- Win32::OLE::Enum::Count method removed
 	- SetSVFromVariant now works with SAFEARRAYs of non-VARIANT types too
 	- Onedimensional SAFEARRAY of UI1s converted to SvPV

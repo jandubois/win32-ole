@@ -1,22 +1,22 @@
 Changes
-Compat.pm          Compatibility layer: old toplevel OLE.pm
-Const.pm	   Win32::OLE::Const module: TypeLib constants
-Enum.pm            Win32::OLE::Enum module: Collection objects
+Compat.pm		Compatibility layer: old toplevel OLE.pm
+Const.pm		Win32::OLE::Const module: TypeLib constants
+Enum.pm			Win32::OLE::Enum module: Collection objects
 MANIFEST
 Makefile.PL
-NLS.pm             Win32::OLE::NLS module: National Language Support
+NLS.pm			Win32::OLE::NLS module: National Language Support
 OLE.pm
 OLE.xs
 README
 ToDo
-Variant.pm         The Win32::OLE::Variant module: VARIANT variables
-eg/constants.pl    Sample script prints all Excel defined constants
-eg/properties.pl   Sample script prints all Excel application properties
-eg/typelibs.pl     Sample script prints all registered typelib names
-eg/word2pod.pl     Prototype of a Word -> POD translator
-eg/word2xxx.pl     Sample file type converter
-t/1_nls.t          Regression tests for Win32::OLE::NLS module
-t/2_variant.t      Regression tests for the Win32::OLE::Variant module
-t/3_ole.t          Regression tests for Win32::OLE using Excel 7 and above
-t/4_compat.t       Regression tests for OLE compatibility module
-t/5_unicode.t      Regression tests using the Unicode::String module
+Variant.pm		The Win32::OLE::Variant module: VARIANT variables
+eg/constants.pl		Sample script prints all Excel defined constants
+eg/properties.pl	Sample script prints all Excel application properties
+eg/typelibs.pl		Sample script prints all registered typelib names
+eg/word2pod.pl		Prototype of a Word -> POD translator
+eg/word2xxx.pl		Sample file type converter
+t/1_nls.t		Regression tests for Win32::OLE::NLS module
+t/2_variant.t		Regression tests for the Win32::OLE::Variant module
+t/3_ole.t		Regression tests for Win32::OLE using Excel 7 and above
+t/4_compat.t		Regression tests for OLE compatibility module
+t/5_unicode.t		Regression tests using the Unicode::String module
