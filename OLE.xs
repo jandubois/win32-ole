@@ -158,23 +158,34 @@ ReleaseBuffer(void *pszHeap, void *pszStack)
 char *
 GetMultiByte(OLECHAR *wide, char *psz, int len, UINT cp)
 {
-    *psz = (char) 0;
-    if (wide == NULL)
-	return psz;
+    int count;
 
-    int count = WideCharToMultiByte(cp, 0, wide, -1, psz, len, NULL, NULL);
-    if (count > 0)
+    if (psz != NULL) {
+	if (wide == NULL) {
+	    *psz = (char) 0;
+	    return psz;
+	}
+	count = WideCharToMultiByte(cp, 0, wide, -1, psz, len, NULL, NULL);
+	if (count > 0)
+	    return psz;
+    }
+    else if (wide == NULL) {
+	Newz(0, psz, 1, char);
 	return psz;
+    }
 
     count = WideCharToMultiByte(cp, 0, wide, -1, NULL, 0, NULL, NULL);
     if (count == 0) { /* should never happen */
 	warn("Win32::OLE: GetMultiByte() failure: %lu", GetLastError());
 	DEBUGBREAK;
+	if (psz == NULL)
+	    New(0, psz, 1, char);
+	*psz = (char) 0;
 	return psz;
     }
 
-    New(0, psz, count, char);
-    count = WideCharToMultiByte(cp, 0, wide, -1, psz, count, NULL, NULL);
+    Newz(0, psz, count, char);
+    WideCharToMultiByte(cp, 0, wide, -1, psz, count, NULL, NULL);
     return psz;
 }
 
@@ -182,20 +193,34 @@ OLECHAR *
 GetWideChar(char *psz, OLECHAR *wide, int len, UINT cp)
 {
     /* Note: len is number of OLECHARs, not bytes! */
-    int count = MultiByteToWideChar(cp, 0, psz, -1, wide, len);
-    if (count > 0)
+    int count;
+
+    if (wide != NULL) {
+	if (psz == NULL) {
+	    *wide = (OLECHAR) 0;
+	    return wide;
+	}
+	count = MultiByteToWideChar(cp, 0, psz, -1, wide, len);
+	if (count > 0)
+	    return wide;
+    }
+    else if (psz == NULL) {
+	Newz(0, wide, 1, OLECHAR);
 	return wide;
+    }
 
     count = MultiByteToWideChar(cp, 0, psz, -1, NULL, 0);
     if (count == 0) {
 	warn("Win32::OLE: GetWideChar() failure: %lu", GetLastError());
 	DEBUGBREAK;
+	if (wide == NULL)
+	    New(0, wide, 1, OLECHAR);
 	*wide = (OLECHAR) 0;
 	return wide;
     }
 
-    New(0, wide, count, OLECHAR);
-    count = MultiByteToWideChar(cp, 0, psz, -1, wide, count);
+    Newz(0, wide, count, OLECHAR);
+    MultiByteToWideChar(cp, 0, psz, -1, wide, count);
     return wide;
 }
 
@@ -1378,8 +1403,10 @@ PPCODE:
     unsigned int length;
     char *buffer;
     HKEY handle;
-    IDispatch *pDispatch;
     HRESULT res;
+    COSERVERINFO ServerInfo;
+    OLECHAR ServerName[OLE_BUF_SIZ];
+    MULTI_QI mqi;
 
     if (CallObjectMethod(mark, ax, items, "new"))
 	return;
@@ -1394,6 +1421,7 @@ PPCODE:
     HV *stash = gv_stashsv(self, TRUE);
     SV *oleclass = ST(1);
     SV *destroy = NULL;
+    SV *sv;
 
     ST(0) = &sv_undef;
 
@@ -1401,25 +1429,39 @@ PPCODE:
 	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
 
     cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
+    ServerInfo.dwSize = sizeof(COSERVERINFO);
+    ServerInfo.pszName = NULL;
+
+    /* DCOM spec: ['hostname', 'Program.Name'] */
+    if (SvROK(oleclass) && (sv = SvRV(oleclass)) && SvTYPE(sv) == SVt_PVAV) {
+	SV *host = av_shift((AV*)sv);
+	oleclass = av_shift((AV*)sv);
+	buffer = SvPV(host, length);
+	ServerInfo.pszName = GetWideChar(buffer, ServerName, OLE_BUF_SIZ, cp);
+    }
+
     buffer = SvPV(oleclass, length);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
-    res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+    if (isalpha(pBuffer[0]))
+        res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+    else
+        res = CLSIDFromString(pBuffer, &CLSIDObj);
     ReleaseBuffer(pBuffer, Buffer);
 
     if (!CheckOleError(stash, res, NULL, NULL)) {
-	res = CoCreateInstance(CLSIDObj, NULL, CLSCTX_LOCAL_SERVER,
-			       IID_IDispatch, (void**)&pDispatch);
-	if (FAILED(res)) {
-	    res = CoCreateInstance(CLSIDObj, NULL, CLSCTX_ALL,
-				   IID_IDispatch, (void**)&pDispatch);
-	    CheckOleError(stash, res, NULL, NULL);
-	}
+	Zero(&mqi, 1, MULTI_QI);
+	mqi.pIID = &IID_IDispatch;
 
-	if (SUCCEEDED(res)) {
+	res = CoCreateInstanceEx(CLSIDObj, NULL, CLSCTX_SERVER,
+		ServerInfo.pszName == NULL ? NULL : &ServerInfo, 1, &mqi);
+
+	if (!CheckOleError(stash, res, NULL, NULL)) {
+	    IDispatch *pDispatch = (IDispatch *)mqi.pItf;
 	    ST(0) = CreatePerlObject(stash, pDispatch, destroy);
 	    DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
 	}
     }
+    ReleaseBuffer(ServerInfo.pszName, ServerName);
     XSRETURN(1);
 }
 
@@ -1637,6 +1679,10 @@ PPCODE:
 	VariantClear(&result);
     }
     else {
+	/* use more specific error code from exception when available */
+	if (res == DISP_E_EXCEPTION && excepinfo.scode != S_OK)
+	    res = excepinfo.scode;
+
 	err = sv_newmortal();
 	sv_setpvf(err, "in methodcall/getproperty \"%s\"", buffer);
 	if (res == DISP_E_TYPEMISMATCH || res == DISP_E_PARAMNOTFOUND) {
@@ -1696,7 +1742,10 @@ PPCODE:
 
     buffer = SvPV(oleclass, length);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
-    res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+    if (isalpha(pBuffer[0]))
+        res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+    else
+        res = CLSIDFromString(pBuffer, &CLSIDObj);
     ReleaseBuffer(pBuffer, Buffer);
     if (CheckOleError(stash, res, NULL, NULL))
 	XSRETURN_UNDEF;

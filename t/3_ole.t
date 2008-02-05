@@ -73,6 +73,10 @@ my $Excel = Excel->new('Excel.Application', \&Quit);
 $Excel::Warn = 2;
 unless (defined $Excel) {
     print "# Excel.Application not installed!\n";
+    my $Msg = Excel->LastError;
+    chomp $Msg;
+    $Msg =~ s/\n/\n\# /g;
+    print "# $Msg\n";
     print "1..0\n";
     exit 0;
 }
@@ -336,5 +340,20 @@ printf "# Variant is (%s,%s)\n", $Variant->Type, $Variant->Value;
 print "not " unless $Variant->Type == VT_BSTR && $Variant->Value eq 'Perl';
 printf "ok %d\n", ++$Test;
 
-# 34. Terminate server instance ("ok $Test\n" printed by Excel destructor)
+# 34. Use clsid string to start OLE server
+undef $Value;
+eval {
+    use Win32::Registry;
+    use vars qw($HKEY_CLASSES_ROOT);
+    my ($HKey,$CLSID);
+    $HKEY_CLASSES_ROOT->Create('Excel.Application\CLSID',$HKey);
+    $HKey->QueryValue('', $CLSID);
+    $Obj = Win32::OLE->new($CLSID);
+    $Value = (Win32::OLE->QueryObjectType($Obj))[0];
+};
+print "# Object application is $Value\n";
+print "not " unless $Value eq 'Excel';
+printf "ok %d\n", ++$Test;
+
+# 35. Terminate server instance ("ok $Test\n" printed by Excel destructor)
 exit;
