@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0608';
+$VERSION = '0.0609';
 
 use Carp;
 use Exporter;
@@ -40,8 +40,8 @@ sub CP_OEMCP {1;}  # OEM codepage
 # The following class methods are pure XS code. They will delegate
 # to Dispatch when called as object methods.
 #
-# - new(oleclass,destroy)
-# - GetActiveObject(oleclass)
+# - new(progid,destroy)
+# - GetActiveObject(progid)
 # - GetObject(pathname)
 # - QueryObjectType(object)
 #
@@ -64,8 +64,8 @@ sub CreateObject {
 
 sub LastError {
     unless (defined $_[0]) {
-	carp("LastError must be called as class method!");
-	return;
+	# Win32::OLE::LastError() will always return $Win32::OLE::LastError
+	return $LastError;
     }
 
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
@@ -195,12 +195,12 @@ currently not supported.
 
 =over 8
 
-=item Win32::OLE->new(CLASS [, DESTRUCTOR])
+=item Win32::OLE->new(PROGID [, DESTRUCTOR])
 
-OLE Automation objects are created using the new() method, the
-second argument to which must be the OLE class of the application
-to create.  Return value is undef if the attempt to create an
-OLE connection failed for some reason. The optional third argument
+OLE Automation objects are created using the new() method, the second
+argument to which must be the OLE program id or class id of the
+application to create.  Return value is undef if the attempt to create
+an OLE connection failed for some reason. The optional third argument
 specifies a DESTROY-like method. This can be either a CODE reference
 or a string containing an OLE method name. It can be used to cleanly
 terminate OLE objects in case the Perl program dies in the middle of

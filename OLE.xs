@@ -23,6 +23,11 @@
 
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #include <windows.h>
+
+/* necessary for VC++ 5.0? */
+#define _WIN32_DCOM
+#include <objbase.h>
+
 #ifdef _DEBUG
     #include <crtdbg.h>
     #define DEBUGBREAK _CrtDbgBreak()
@@ -84,6 +89,18 @@ static char LASTERR_NAME[] = "LastError";
 static const int LASTERR_LEN = sizeof(LASTERR_NAME)-1;
 static char TIE_NAME[] = "Tie";
 static const int TIE_LEN = sizeof(TIE_NAME)-1;
+
+/* MSC++ 4.2 contains an old/invalid definition of COSERVERINFO */
+typedef struct
+{
+    DWORD dwReserved1;
+    LPWSTR pwszName;
+    void  *pAuthInfo;
+    DWORD dwReserved2;
+}   MYCOSERVERINFO;
+
+typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
+    (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
 
 /* common object header */
 typedef struct _tagOBJECTHEADER OBJECTHEADER;
@@ -151,7 +168,7 @@ HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
 inline void
 ReleaseBuffer(void *pszHeap, void *pszStack)
 {
-    if (pszHeap != pszStack)
+    if (pszHeap != pszStack && pszHeap != NULL)
 	Safefree(pszHeap);
 }
 
@@ -541,7 +558,10 @@ CheckOleStruct(IV addr)
 WINOLEOBJECT *
 GetOleObject(SV *sv)
 {
-    /*  don't use sv_isobject/sv_derived_from; they'll call mg_get! */
+    /* Don't use sv_isobject/sv_derived_from; they'll call mg_get!
+       This will call the default OLE method if numeric/stringify
+       overloading has been enabled.
+    */
     if (sv != NULL && SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 	if (psv != NULL) {
@@ -1396,72 +1416,95 @@ void
 new(...)
 PPCODE:
 {
-    UINT cp;
-    CLSID CLSIDObj;
+    CLSID clsid;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     unsigned int length;
     char *buffer;
     HKEY handle;
     HRESULT res;
-    COSERVERINFO ServerInfo;
+    FNCOCREATEINSTANCEEX *pfnCreateInstance = NULL;
+    MYCOSERVERINFO ServerInfo;
     OLECHAR ServerName[OLE_BUF_SIZ];
-    MULTI_QI mqi;
 
     if (CallObjectMethod(mark, ax, items, "new"))
 	return;
 
     if (items < 2 || items > 3) {
-	warn("Usage: Win32::OLE->new(class[,destroy])");
+	warn("Usage: Win32::OLE->new(progid[,destroy])");
 	DEBUGBREAK;
-	XSRETURN_EMPTY;
+	XSRETURN_UNDEF;
     }
 
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
-    SV *oleclass = ST(1);
+    SV *progid = ST(1);
     SV *destroy = NULL;
-    SV *sv;
-
-    ST(0) = &sv_undef;
+    UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
     if (items == 3)
 	destroy = CheckDestroyFunction(ST(2), "Win32::OLE::new");
 
-    cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
-    ServerInfo.dwSize = sizeof(COSERVERINFO);
-    ServerInfo.pszName = NULL;
+    ST(0) = &sv_undef;
+    Zero(&ServerInfo, 1, MYCOSERVERINFO);
 
-    /* DCOM spec: ['hostname', 'Program.Name'] */
-    if (SvROK(oleclass) && (sv = SvRV(oleclass)) && SvTYPE(sv) == SVt_PVAV) {
-	SV *host = av_shift((AV*)sv);
-	oleclass = av_shift((AV*)sv);
+    /* DCOM spec: ['Servername', 'Program.ID'] */
+    if (SvROK(progid) && SvTYPE(SvRV(progid)) == SVt_PVAV) {
+	AV *av = (AV*)SvRV(progid);
+
+	/* DCOM might not exist on Win95 (and does not on NT 3.5) */
+	HMODULE hModule = GetModuleHandle("OLE32");
+	if (hModule != NULL) {
+	    pfnCreateInstance = (FNCOCREATEINSTANCEEX *)
+	                        GetProcAddress(hModule, "CoCreateInstanceEx");
+	}
+	if (pfnCreateInstance == NULL) {
+	    res = HRESULT_FROM_WIN32(ERROR_SERVICE_DOES_NOT_EXIST);
+	    ReportOleError(stash, res, NULL, NULL);
+	    XSRETURN(1);
+	}
+
+	SV *host = av_shift(av);
+	progid = av_shift(av);
 	buffer = SvPV(host, length);
-	ServerInfo.pszName = GetWideChar(buffer, ServerName, OLE_BUF_SIZ, cp);
+	ServerInfo.pwszName = GetWideChar(buffer, ServerName, OLE_BUF_SIZ, cp);
     }
 
-    buffer = SvPV(oleclass, length);
+    buffer = SvPV(progid, length);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0]))
-        res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+        res = CLSIDFromProgID(pBuffer, &clsid);
     else
-        res = CLSIDFromString(pBuffer, &CLSIDObj);
+        res = CLSIDFromString(pBuffer, &clsid);
     ReleaseBuffer(pBuffer, Buffer);
 
-    if (!CheckOleError(stash, res, NULL, NULL)) {
-	Zero(&mqi, 1, MULTI_QI);
-	mqi.pIID = &IID_IDispatch;
+    if (SUCCEEDED(res)) {
+	IDispatch *pDispatch = NULL;
 
-	res = CoCreateInstanceEx(CLSIDObj, NULL, CLSCTX_SERVER,
-		ServerInfo.pszName == NULL ? NULL : &ServerInfo, 1, &mqi);
+	if (pfnCreateInstance == NULL) {
+	    res = CoCreateInstance(clsid, NULL, CLSCTX_SERVER, 
+				   IID_IDispatch, (void**)&pDispatch);
+	}
+	else {
+	    COSERVERINFO *psi = NULL;
+	    if (ServerInfo.pwszName != NULL)
+	        psi = (COSERVERINFO *) &ServerInfo;
 
-	if (!CheckOleError(stash, res, NULL, NULL)) {
-	    IDispatch *pDispatch = (IDispatch *)mqi.pItf;
+	    MULTI_QI mqi;
+	    Zero(&mqi, 1, MULTI_QI);
+	    mqi.pIID = &IID_IDispatch;
+
+	    res = pfnCreateInstance(clsid, NULL, CLSCTX_SERVER, psi, 1, &mqi);
+	    pDispatch = (IDispatch *)mqi.pItf;
+	}
+
+	if (SUCCEEDED(res)) {
 	    ST(0) = CreatePerlObject(stash, pDispatch, destroy);
 	    DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));
 	}
     }
-    ReleaseBuffer(ServerInfo.pszName, ServerName);
+    ReleaseBuffer(ServerInfo.pwszName, ServerName);
+    CheckOleError(stash, res, NULL, NULL);
     XSRETURN(1);
 }
 
@@ -1711,7 +1754,7 @@ void
 GetActiveObject(...)
 PPCODE:
 {
-    CLSID CLSIDObj;
+    CLSID clsid;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     unsigned int length;
@@ -1724,14 +1767,14 @@ PPCODE:
 	return;
 
     if (items != 2) {
-	warn("Usage: Win32::OLE->GetActiveObject(oleclass)");
+	warn("Usage: Win32::OLE->GetActiveObject(progid)");
 	DEBUGBREAK;
 	XSRETURN_UNDEF;
     }
 
     SV *self = ST(0);
     HV *stash = gv_stashsv(self, TRUE);
-    SV *oleclass = ST(1);
+    SV *progid = ST(1);
     UINT cp = QueryPkgVar(stash, CP_NAME, CP_LEN, cpDefault);
 
     if (!SvPOK(self)) {
@@ -1740,17 +1783,17 @@ PPCODE:
 	XSRETURN_UNDEF;
     }
 
-    buffer = SvPV(oleclass, length);
+    buffer = SvPV(progid, length);
     pBuffer = GetWideChar(buffer, Buffer, OLE_BUF_SIZ, cp);
     if (isalpha(pBuffer[0]))
-        res = CLSIDFromProgID(pBuffer, &CLSIDObj);
+        res = CLSIDFromProgID(pBuffer, &clsid);
     else
-        res = CLSIDFromString(pBuffer, &CLSIDObj);
+        res = CLSIDFromString(pBuffer, &clsid);
     ReleaseBuffer(pBuffer, Buffer);
     if (CheckOleError(stash, res, NULL, NULL))
 	XSRETURN_UNDEF;
 
-    res = GetActiveObject(CLSIDObj, 0, &pUnknown);
+    res = GetActiveObject(clsid, 0, &pUnknown);
     /* Don't call CheckOleError! Return "undef" for "Server not running" */
     if (FAILED(res))
 	XSRETURN_UNDEF;
@@ -2126,8 +2169,8 @@ PPCODE:
 MODULE = Win32::OLE		PACKAGE = Win32::OLE::Const
 
 void
-_Load(clsid,major,minor,locale,codepage,typelib)
-    SV *clsid
+_Load(classid,major,minor,locale,codepage,typelib)
+    SV *classid
     IV major
     IV minor
     SV *locale
@@ -2136,7 +2179,7 @@ _Load(clsid,major,minor,locale,codepage,typelib)
 PPCODE:
 {
     ITypeLib *pTypeLib;
-    CLSID CLSIDObj;
+    CLSID clsid;
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     HRESULT res;
@@ -2150,11 +2193,11 @@ PPCODE:
     if (SvIOK(codepage))
 	cp = SvIV(codepage);
 
-    if (sv_derived_from(clsid, szWINOLE)) {
+    if (sv_derived_from(classid, szWINOLE)) {
 	/* Get containing typelib from IDispatch interface */
 	ITypeInfo *pTypeInfo;
 	unsigned int count;
-	WINOLEOBJECT *pObj = GetOleObject(clsid);
+	WINOLEOBJECT *pObj = GetOleObject(classid);
 	if (pObj == NULL)
 	    XSRETURN_UNDEF;
 
@@ -2176,16 +2219,16 @@ PPCODE:
 	    XSRETURN_UNDEF;
     }
     else {
-	/* try to load registered typelib by clsid, version and lcid */
-	char *pszBuffer = SvPV(clsid, na);
+	/* try to load registered typelib by classid, version and lcid */
+	char *pszBuffer = SvPV(classid, na);
 	pBuffer = GetWideChar(pszBuffer, Buffer, OLE_BUF_SIZ, cp);
-	res = CLSIDFromString(pBuffer, &CLSIDObj);
+	res = CLSIDFromString(pBuffer, &clsid);
 	ReleaseBuffer(pBuffer, Buffer);
 
 	if (CheckOleError(stash, res, NULL, NULL))
 	    XSRETURN_UNDEF;
 
-	res = LoadRegTypeLib(CLSIDObj, major, minor, lcid, &pTypeLib);
+	res = LoadRegTypeLib(clsid, major, minor, lcid, &pTypeLib);
 	if (FAILED(res) && SvPOK(typelib)) {
 	    /* typelib not registerd, try to read from file "typelib" */
 	    pszBuffer = SvPV(typelib, na);

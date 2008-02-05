@@ -1,5 +1,9 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0609
+	- Win32::OLE::LastError() returns $Win32::OLE::LastError
+	- misc COSERVERINFO fixes
+
 0.0608
 	- use scode from excepinfo structure when available instead 
 	  of DISP_E_EXCEPTION (as suggested by Steve Glassman)
@@ -9,8 +13,9 @@ Revision history for Perl extension Win32::OLE.
 	-         "          "         "       of numeric class id
 
 0.0607
+	- enhanced C<in> allows multiple args and supports array refs too
 	- SetSVFromVariant array bug fixes
-
+	
 0.0606
 	- use SvTRUE instead of SvIV to convert SV to VARIANT
 	- REFCNT of returned SV for VT_ARRAY variant is now set correctly
@@ -26,8 +31,8 @@ Revision history for Perl extension Win32::OLE.
 	- Win32::OLE::CreateObject function for compatibility w/"Learning Perl"
 	- Win32::OLE->LastError returns a dual value now (IV and PV)
 	- Removed unsupported TKIND_ and VT_ constants from Win32::OLE::Variant
-	- lcidDefault changed back to LOCALE_SYSTEM_DEFAULT, the language neutral
-	  setting didn't allow portable scripts either
+	- lcidDefault changed back to LOCALE_SYSTEM_DEFAULT, the language
+	  neutral setting didn't allow portable scripts either
 	- Sample file type converter script in eg/word2xxx.pl
 	- valof uses CP and LCID of arg class for variant conversion
 
