@@ -22,6 +22,8 @@
  *
  */
 
+#define USE_SV_PERINTERP
+
 #ifdef XS_VERSION
 #   define MY_VERSION "Win32::OLE::" XS_VERSION
 #else
@@ -54,6 +56,10 @@ extern "C" {
 
 #if (PATCHLEVEL < 4) || ((PATCHLEVEL == 4) && (SUBVERSION < 1))
 #    error Win32::OLE module requires Perl 5.004_01 or later
+#endif
+
+#ifndef CPERLarg_
+#    define CPERLarg_
 #endif
 
 #if !defined(_DEBUG)
@@ -118,7 +124,7 @@ typedef struct
 }   PERINTERP;
 
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
-#    if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+#    if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
 #       define dPERINTERP                                                 \
            SV *interp = perl_get_sv(MY_VERSION, FALSE);                   \
            if (interp == NULL || !SvIOK(interp))                          \
@@ -126,9 +132,9 @@ typedef struct
            PERINTERP *pInterp = (PERINTERP*)SvIV(interp)
 #    else
 #	define dPERINTERP                                                 \
-           SV **pinterp = hv_fetch(MY_VERSION, szWINOLE,                  \
-                                     sizeof(szWINOLE)-1, FALSE);          \
-           if (*pinterp == NULL || !SvIOK(*pinterp))                      \
+           SV **pinterp = hv_fetch(modglobal, MY_VERSION,                 \
+                                   sizeof(MY_VERSION)-1, FALSE);          \
+           if (pinterp == NULL || *pinterp == NULL || !SvIOK(*pinterp))   \
                warn(MY_VERSION ": Per-interpreter data not initialized"); \
 	   PERINTERP *pInterp = (PERINTERP*)SvIV(*pinterp)
 #   endif
@@ -1592,16 +1598,18 @@ Uninitialize(PERINTERP *pInterp, int magic)
     LeaveCriticalSection(&g_CriticalSection);
 
     if (magic == WINOLE_MAGIC) {
-	DeleteCriticalSection(&g_CriticalSection);
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+#   if !((PATCHLEVEL == 4) && (SUBVERSION < 65)) && !defined(USE_SV_PERINTERP)
+	DeleteCriticalSection(&g_CriticalSection);
 	Safefree(pInterp);
+#   endif
 #endif
 	DBG(("Interpreter exit\n"));
     }
 }
 
 static void
-AtExit(void *pVoid)
+AtExit(CPERLarg_ void *pVoid)
 {
     Uninitialize((PERINTERP*)pVoid, WINOLE_MAGIC);
     DBG(("AtExit done\n"));
@@ -1614,7 +1622,7 @@ Bootstrap(void)
     PERINTERP *pInterp;
     New(0, pInterp, 1, PERINTERP);
 
-#   if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+#   if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
     SV *sv = perl_get_sv(MY_VERSION, TRUE);
 #   else
     SV *sv = *hv_fetch(modglobal, MY_VERSION, sizeof(MY_VERSION)-1, TRUE);
@@ -1630,7 +1638,7 @@ Bootstrap(void)
     g_bInitialized = FALSE;
     InitializeCriticalSection(&g_CriticalSection);
 
-#if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+#   if ((PATCHLEVEL == 4) && (SUBVERSION < 65)) || defined(USE_SV_PERINTERP)
     SV *cmd = sv_2mortal(newSVpv("",0));
     sv_setpvf(cmd, "END { %s->Uninitialize(%d); }", szWINOLE, WINOLE_MAGIC );
     perl_eval_sv(cmd, TRUE);
@@ -1937,6 +1945,8 @@ PPCODE:
 		    ReportOleError(stash, res, NULL, sv_2mortal(err));
 		}
 		ST(0) = &sv_undef;
+
+
 		XSRETURN(1);
 	    }
 	}
