@@ -23,9 +23,9 @@
  */
 
 #ifdef XS_VERSION
-#   define MY_VERSION "Win32::OLE-" XS_VERSION
+#   define MY_VERSION "Win32::OLE::" XS_VERSION
 #else
-#   define MY_VERSION "Win32::OLE-?.??"
+#   define MY_VERSION "Win32::OLE::?.??"
 #endif
 
 
@@ -106,14 +106,52 @@ static const int TIE_LEN = sizeof(TIE_NAME)-1;
 typedef HRESULT (STDAPICALLTYPE FNCOCREATEINSTANCEEX)
     (REFCLSID, IUnknown*, DWORD, COSERVERINFO*, DWORD, MULTI_QI*);
 
-/* common object header */
 typedef struct _tagOBJECTHEADER OBJECTHEADER;
+
+/* per interpreter variables */
+typedef struct
+{
+    CRITICAL_SECTION CriticalSection;
+    OBJECTHEADER *pObj;
+    BOOL bInitialized;
+
+}   PERINTERP;
+
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+#    if (PATCHLEVEL == 4) && (SUBVERSION < 65)
+#       define dPERINTERP                                                 \
+           SV *interp = perl_get_sv(MY_VERSION, FALSE);                   \
+           if (interp == NULL || !SvIOK(interp))                          \
+               warn(MY_VERSION ": Per-interpreter data not initialized"); \
+           PERINTERP *pInterp = (PERINTERP*)SvIV(interp)
+#    else
+#	define dPERINTERP                                                 \
+           SV **pinterp = hv_fetch(MY_VERSION, szWINOLE,                  \
+                                     sizeof(szWINOLE)-1, FALSE);          \
+           if (*pinterp == NULL || !SvIOK(*pinterp))                      \
+               warn(MY_VERSION ": Per-interpreter data not initialized"); \
+	   PERINTERP *pInterp = (PERINTERP*)SvIV(*pinterp)
+#   endif
+#   define INTERP pInterp
+#else
+static PERINTERP Interp;
+#   define dPERINTERP extern int errno
+#   define INTERP (&Interp)
+#endif
+
+#define g_pObj            (INTERP->pObj)
+#define g_bInitialized    (INTERP->bInitialized)
+#define g_CriticalSection (INTERP->CriticalSection)
+
+/* common object header */
 typedef struct _tagOBJECTHEADER
 {
     long lMagic;
     OBJECTHEADER *pNext;
     OBJECTHEADER *pPrevious;
-
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+    PERINTERP    *pInterp;
+#endif
 }   OBJECTHEADER;
 
 /* Win32::OLE object */
@@ -155,39 +193,6 @@ typedef struct
 
 }   WINOLEVARIANTOBJECT;
 
-
-/* per interpreter variables */
-typedef struct
-{
-    CRITICAL_SECTION CriticalSection;
-    OBJECTHEADER *pObj;
-    BOOL bInitialized;
-
-}   PERINTERP;
-
-#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
-#    if (PATCHLEVEL == 4) && (SUBVERSION < 65)
-#       define MODGLOBAL "Win32::OLE::__MODGLOBAL__"
-#	define dPERINTERP                                                      \
-	   PERINTERP *pInterp = (PERINTERP*)SvIV(perl_get_sv(MODGLOBAL, FALSE))
-#    else
-#	define dPERINTERP                                                      \
-           SV **psvInterp = hv_fetch(modglobal, szWINOLE,                      \
-                                     sizeof(szWINOLE)-1, FALSE);               \
-	   PERINTERP *pInterp = (PERINTERP*)SvIV(*psvInterp)
-#   endif
-#   define INTERP pInterp
-#   define g_pObj (pInterp->pObj)
-#   define g_bInitialized (pInterp->bInitialized)
-#   define g_CriticalSection (pInterp->CriticalSection)
-#else
-static PERINTERP Interp;
-#   define dPERINTERP extern int errno
-#   define INTERP (&Interp)
-#   define g_pObj (Interp.pObj)
-#   define g_bInitialized (Interp.bInitialized)
-#   define g_CriticalSection (Interp.CriticalSection)
-#endif
 
 /* forward declarations */
 HRESULT SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash);
@@ -263,13 +268,14 @@ IsLocalMachine(char *pszMachine)
 	return FALSE;
     }
 
+    int index;
     int count = 0;
     char *pLocal;
     while (pHostEnt->h_addr_list[count] != NULL)
 	++count;
 
     New(0, pLocal, 4*count, char);
-    for (int index = 0 ; index < count ; ++index)
+    for (index = 0 ; index < count ; ++index)
 	memcpy(pLocal+4*index, pHostEnt->h_addr_list[index], 4);
 
     /* Determine addresses of remote machine */
@@ -278,13 +284,13 @@ IsLocalMachine(char *pszMachine)
     char **ppRemote = &pRemote[0];
 
     if (isdigit(*pszMachine)) {
-	/* Convert dotted address list */
+	/* Convert numeric dotted address */
 	ulRemoteAddr = inet_addr(pszMachine);
 	if (ulRemoteAddr != INADDR_NONE)
 	    pRemote[0] = (char*)&ulRemoteAddr;
     }
     else {
-	/* Get addresses for remote host name */
+	/* Lookup addresses for remote host name */
 	pHostEnt = gethostbyname(pszMachine);
 	if (pHostEnt != NULL)
 	    if (pHostEnt->h_addrtype == PF_INET && pHostEnt->h_length == 4)
@@ -292,7 +298,7 @@ IsLocalMachine(char *pszMachine)
     }
 
     /* Compare list of addresses of remote machine against local addresses */
-    while (ppRemote != NULL) {
+    while (*ppRemote != NULL) {
 	for (index = 0 ; index < count ; ++index)
 	    if (memcmp(pLocal+4*index, *ppRemote, 4) == 0) {
 		Safefree(pLocal);
@@ -318,7 +324,7 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
     if (err != ERROR_SUCCESS)
 	return HRESULT_FROM_WIN32(err);
 
-    SV *subkey = newSVpv("SOFTWARE\\Classes\\", 0);
+    SV *subkey = sv_2mortal(newSVpv("SOFTWARE\\Classes\\", 0));
     sv_catpv(subkey, pszProgID);
     sv_catpv(subkey, "\\CLSID");
 
@@ -342,13 +348,12 @@ CLSIDFromRemoteRegistry(char *pszHost, char *pszProgID, CLSID *pCLSID)
 				wszCLSID, sizeof(szCLSID));
 	    res = CLSIDFromString(wszCLSID, pCLSID);
 	}
-	else
+	else /* XXX maybe there is a more appropriate error code? */
 	    res = HRESULT_FROM_WIN32(ERROR_CANTREAD);
 
 	RegCloseKey(hKeyProgID);
     }
 
-    SvREFCNT_dec(subkey);
     RegCloseKey(hKeyLocalMachine);
     return res;
 
@@ -630,6 +635,11 @@ AddToObjectChain(OBJECTHEADER *pHeader, long lMagic)
     pHeader->lMagic = lMagic;
     pHeader->pPrevious = NULL;
     pHeader->pNext = g_pObj;
+
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+    pHeader->pInterp = INTERP;
+#endif
+
     if (g_pObj)
 	g_pObj->pPrevious = pHeader;
     g_pObj = pHeader;
@@ -642,7 +652,9 @@ RemoveFromObjectChain(OBJECTHEADER *pHeader)
     if (pHeader == NULL)
 	return;
 
-    dPERINTERP;
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+    PERINTERP *pInterp = pHeader->pInterp;
+#endif
 
     EnterCriticalSection(&g_CriticalSection);
     if (pHeader->pPrevious == NULL) {
@@ -1581,6 +1593,9 @@ Uninitialize(PERINTERP *pInterp, int magic)
 
     if (magic == WINOLE_MAGIC) {
 	DeleteCriticalSection(&g_CriticalSection);
+#if defined(MULTIPLICITY) || defined(PERL_OBJECT)
+	Safefree(pInterp);
+#endif
 	DBG(("Interpreter exit\n"));
     }
 }
@@ -1592,7 +1607,7 @@ AtExit(void *pVoid)
     DBG(("AtExit done\n"));
 }
 
-static void
+void
 Bootstrap(void)
 {
 #if defined(MULTIPLICITY) || defined(PERL_OBJECT)
@@ -1600,13 +1615,20 @@ Bootstrap(void)
     New(0, pInterp, 1, PERINTERP);
 
 #   if (PATCHLEVEL == 4) && (SUBVERSION < 65)
-    sv_setiv(perl_get_sv(MODGLOBAL, TRUE), (IV)pInterp);
+    SV *sv = perl_get_sv(MY_VERSION, TRUE);
 #   else
-    hv_store(modglobal, szWINOLE, sizeof(szWINOLE)-1,
-	     newSViv((IV)pInterp), 0);
+    SV *sv = *hv_fetch(modglobal, MY_VERSION, sizeof(MY_VERSION)-1, TRUE);
 #   endif
 
+    if (SvOK(sv))
+	warn(MY_VERSION ": Per-interpreter data already set");
+
+    sv_setiv(sv, (IV)pInterp);
 #endif
+
+    g_pObj = NULL;
+    g_bInitialized = FALSE;
+    InitializeCriticalSection(&g_CriticalSection);
 
 #if (PATCHLEVEL == 4) && (SUBVERSION < 65)
     SV *cmd = sv_2mortal(newSVpv("",0));
@@ -1615,10 +1637,6 @@ Bootstrap(void)
 #else
     perl_atexit(AtExit, INTERP);
 #endif
-
-    g_pObj = NULL;
-    g_bInitialized = FALSE;
-    InitializeCriticalSection(&g_CriticalSection);
 }
 
 BOOL

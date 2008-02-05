@@ -1,5 +1,11 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0806  (unreleased)
+	- Bug fixes for IsLocalMachine()
+	- Free per-interpreter memory area at interpreter-exit
+	- Bootstrap no longer static function
+	- Use MY_VERSION as key/variable name for per-interpreter data
+
 0.0805  (unreleased)
 	- Never do CLSID lookup by registry on local machine
 	- try to use socket APIs too to determine host identity
