@@ -5,7 +5,7 @@ package Win32::OLE;
 use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD);
 
-$VERSION = '0.05';
+$VERSION = '0.06';
 
 # Do not "use Carp;", it pollutes the OLE namespace!
 # It must be required though, because the XS code uses
@@ -177,7 +177,9 @@ OLE Automation brings VisualBasic like scripting capabilities and
 offers powerful extensibility and the ability to control many Win32
 applications from Perl scripts.
 
-OLE events and OCX's are currently not supported.
+The Win32::OLE module uses the IDispatch interface exclusively. It is
+not possible to access a custom OLE interface. OLE events and OCX's are
+currently not supported.
 
 =head2 Functions/Methods
 
@@ -248,7 +250,7 @@ function is not exported by default.
 Here is a simple Microsoft Excel application.
 
 	use Win32::OLE;
-
+	
 	# use existing instance if Excel is already running
 	eval {$ex = Win32::OLE->GetActiveObject('Excel.Application')};
 	if ($@) {
@@ -260,7 +262,16 @@ Here is a simple Microsoft Excel application.
 	$book = $ex->Workbooks->Open( 'test.xls' );
 	
 	# write to a particular cell
-	$book->Worksheets(1)->Cells(1,1)->{Value} = "foo";
+	$sheet = $book->Worksheets(1);
+	$sheet->Cells(1,1)->{Value} = "foo";
+
+        # write a 2 rows by 3 columns range
+        $sheet->Range("A8:C9")->{Value} = [[ undef, 'Xyzzy', 'Plugh' ],
+                                           [ 42,    'Perl',  3.1415  ]];
+	
+        # print "XyzzyPerl"
+        $array = $sheet->Range("A8:B9")->{Value};
+        print $array[0][1] . $array[1][1];
 	
 	# save and exit
 	$book->Save;
@@ -441,7 +452,7 @@ allow writing more portable scripts in this regard.
 =item SaveAs method in Word 97 doesn't work
 
 This is an known bug in Word 97. Search the MS knowledge base for Word /
-Foxpro incompatibility. The problems applies to the Perl OLE interface as
+Foxpro incompatibility. That problem applies to the Perl OLE interface as
 well. A workaround is to use the WordBasic compatibility object. It doesn't
 support all the options of the native method though.
 
@@ -540,7 +551,7 @@ really seem to work anyways.
 
 The Variant functions and constants have been moved into the separate module
 Win32::OLE::Variant. Starting with the next release the variant functions
-and constants will be only available through that package anymore.
+and constants will be only available through that package.
 
 =back
 
@@ -568,7 +579,7 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.05	14 December 1997
+Version 0.06	6 February 1998
 
 =cut
 

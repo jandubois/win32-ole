@@ -40,7 +40,7 @@ close(ME);
 
 print STDERR "\n##### Ignore test failure if Excel is not installed #####\n";
 
-my $File = Win32::GetCurrentDirectory . "\\test.xls";
+my $File = Win32::GetCwd . "\\test.xls";
 unlink $File if -f $File;
 
 $Test = 0;
@@ -118,10 +118,10 @@ print "not " unless $Cells->{Value} == 25;
 printf "ok %d\n", ++$Test;
 
 # 11. Set a cell range from an array ref containing an IV, PV and NV
-$Sheet->Range("A9:C9")->{Value} = [42, 'Perl', 3.1415];
-$Value = $Sheet->Cells(9,2)->{Value};
+$Sheet->Range("A8:C9")->{Value} = [[undef, 'Camel'],[42, 'Perl', 3.1415]];
+$Value = $Sheet->Cells(9,2)->{Value} . $Sheet->Cells(8,2)->{Value};
 print "# Value is \"$Value\"\n";
-print "not " unless $Value eq 'Perl';
+print "not " unless $Value eq 'PerlCamel';
 printf "ok %d\n", ++$Test;
 
 # 12. Retrieve float value (esp. interesting in foreign locales)
@@ -130,8 +130,34 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Value == 3.1415;
 printf "ok %d\n", ++$Test;
 
-# 13. Set a cell formula and retrieve calculated value
-my $xlCalculationAutomatic = -4105;
+# 13. Retrieve a 2 dimensional range; check array data structure
+sub stringify {
+    my $arg = shift;
+    return "<undef>" unless defined $arg;
+    if (ref $arg eq 'ARRAY') {
+	my $res;
+	foreach my $elem (@$arg) {
+	    $res .= "," if defined $res;
+	    $res .= stringify($elem);
+	}
+	return "[$res]";
+    }
+    return "$arg";
+}
+
+$Value = $Sheet->Range("B8:C9")->{Value};
+printf "# Values are: \"%s\"\n", stringify($Value);
+print "not " unless @$Value == 2 && ref $Value && 
+  ref $$Value[0] && ref $$Value[1];
+printf "ok %d\n", ++$Test;
+
+# 14. Check contents of 2 dimensional array
+$Value = $$Value[0][0] . $$Value[1][0] . $$Value[1][1];
+print "# Value is \"$Value\"\n";
+print "not " unless $Value eq 'CamelPerl3.1415';
+printf "ok %d\n", ++$Test;
+
+# 15. Set a cell formula and retrieve calculated value
 $Excel->{Calculation} = $xlCalculationAutomatic;
 $Sheet->Cells(3,1)->{Formula} = '=PI()';
 $Value = $Sheet->Cells(3,1)->{Value};
@@ -139,7 +165,7 @@ print "# Value is \"$Value\"\n";
 print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
-# 14. Add single worksheet and check that worksheet count is incremented
+# 16. Add single worksheet and check that worksheet count is incremented
 my $Count = $Sheets->{Count};
 $Book->Worksheets->Add;
 $Value = $Sheets->{Count};
@@ -147,7 +173,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+1;
 printf "ok %d\n", ++$Test;
 
-# 15. Add 2 more sheets, optional arguments are omitted
+# 17. Add 2 more sheets, optional arguments are omitted
 $Count = $Sheets->{Count};
 $Book->Worksheets->Add(undef,undef,2);
 $Value = $Sheets->{Count};
@@ -155,7 +181,7 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 16. Add 3 more sheets before sheet 2 using a named argument
+# 18. Add 3 more sheets before sheet 2 using a named argument
 $Count = $Sheets->{Count};
 $Book->Worksheets(2)->{Name} = 'XYZZY';
 $Sheets->Add($Book->Worksheets(2), {Count => 3});
@@ -164,13 +190,13 @@ print "# Count is \"$Count\" and Value is \"$Value\"\n";
 print "not " unless $Value == $Count+3;
 printf "ok %d\n", ++$Test;
 
-# 17. Previous sheet 2 should now be sheet 5
+# 19. Previous sheet 2 should now be sheet 5
 $Value = $Book->Worksheets(5)->{Name};
 print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'XYZZY';
 printf "ok %d\n", ++$Test;
 
-# 18. Add 2 more sheets at the end using 2 named arguments
+# 20. Add 2 more sheets at the end using 2 named arguments
 $Count = $Sheets->{Count};
 # Following line doesn't work with Excel 7 (Seems like an Excel bug?)
 # $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count})});
@@ -178,7 +204,7 @@ $Sheets->Add({Count => 2, After => $Book->Worksheets($Sheets->{Count}-1)});
 print "not " unless $Sheets->{Count} == $Count+2;
 printf "ok %d\n", ++$Test;
 
-# 19. Number of objects in an enumeration must match its "Count" property
+# 21. Number of objects in an enumeration must match its "Count" property
 my @Sheets = Win32::OLE::Enum->All($Sheets);
 printf "# \$Sheets->{Count} is %d\n", $Sheets->{Count};
 printf "# scalar(\@Sheets) is %d\n", scalar(@Sheets);
@@ -188,7 +214,7 @@ foreach my $Sheet (@Sheets) {
 print "not " unless $Sheets->{Count} == @Sheets;
 printf "ok %d\n", ++$Test;
 
-# 20. Enumerate all application properties using the C<keys> function
+# 22. Enumerate all application properties using the C<keys> function
 my @Properties = keys %$Excel;
 printf "# Number of Excel application properties: %d\n", scalar(@Properties);
 $Value = grep /^(Parent|Xyzzy|Name)$/, @Properties;
@@ -196,15 +222,15 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Value == 2;
 printf "ok %d\n", ++$Test;
 
-# 21. Save workbook to file
+# 23. Save workbook to file
 print "not " unless $Book->SaveAs($File);
 printf "ok %d\n", ++$Test;
 
-# 22. Check if output file exists.
+# 24. Check if output file exists.
 print "not " unless -f $File;
 printf "ok %d\n", ++$Test;
 
-# 23. Access the same file object through a moniker.
+# 25. Access the same file object through a moniker.
 my $Obj = Win32::OLE->GetObject($File);
 for ($Count=0 ; $Count < 5 ; ++$Count) {
     my $Type = Win32::OLE->QueryObjectType($Obj);
@@ -218,5 +244,5 @@ print "# Value is \"$Value\"\n";
 print "not " unless abs($Value-3.141592) < 0.00001;
 printf "ok %d\n", ++$Test;
 
-# 24. Terminate server instance ("ok $Test\n" printed by Excel destructor method)
+# 26. Terminate server instance ("ok $Test\n" printed by Excel destructor method)
 exit;

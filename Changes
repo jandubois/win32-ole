@@ -1,31 +1,10 @@
 Revision history for Perl extension Win32::OLE.
 
-0.01  Sat Apr  5 14:23:42 1997
-	- original version; created by h2xs 1.18
-	- imported Activeware version
-0.02  Sat May 10 15:40:52 1997
-	- cleaned up one big memory leakathon (DESTROY actually gets
-	  called now on all the objects)
-	- back to XS
-	- package names are Win32::OLE and Win32::OLE::Tie now
-	- fixed misplaced DESTROY
-	- implemented OLEUninitialize via DllMain
-0.03  Sat Jul 12 16:10:07 1997
-	- DllEntryPoint for Borland
-0.04  Sun Oct 12 23:03:32 1997 (unreleased)
-	- support for unnamed default methods (thanks to
-	  Doug Lankshear <Doug_Lankshear@ActiveState.com>)
-	- Following changes courtesy Jan Dubois <jan.dubois@ibm.net>:
-	    * CreateVariantFromSV is more robust now
-	    * support for omitting optional params with "undef"
-	    * named arguments can be specified as a hash ref
-	    * array elements are now properly typed (used to be always text)
-	    * additions to testsuite
-	    * With() utility method suggestion
-	    * optional DESTROY method arg for Win32::OLE->new
-	    * Win32::OLE::CreateObject renamed to Win32::OLE::new
-	      old Perl new() method deleted
-	    * Hardcoded package names gone, so inheritance is feasible now
+0.06  Fri Feb  6 21:13:20 1998
+	All changes in this release courtesy Jan Dubois <jan.dubois@ibm.net>
+	- bugfix: DoCroak uninitialized variable
+	- Multidimensional arrays can now be sent and received
+
 0.05  Sun Dec 14 21:13:11 1997
 	All changes in this release courtesy Jan Dubois <jan.dubois@ibm.net>
 	- All OLE errors are caught and a verbose error message is provided
@@ -40,3 +19,34 @@ Revision history for Perl extension Win32::OLE.
 	- Variants moved to Win32::OLE::Variant module; enhanced functionality
 	- Win32::OLE->QueryObjectType return typelib name and class name of
 	  object
+
+0.04  Sun Oct 12 23:03:32 1997 (unreleased)
+	- support for unnamed default methods (thanks to
+	  Doug Lankshear <Doug_Lankshear@ActiveState.com>)
+	- Following changes courtesy Jan Dubois <jan.dubois@ibm.net>:
+	    * CreateVariantFromSV is more robust now
+	    * support for omitting optional params with "undef"
+	    * named arguments can be specified as a hash ref
+	    * array elements are now properly typed (used to be always text)
+	    * additions to testsuite
+	    * With() utility method suggestion
+	    * optional DESTROY method arg for Win32::OLE->new
+	    * Win32::OLE::CreateObject renamed to Win32::OLE::new
+	      old Perl new() method deleted
+	    * Hardcoded package names gone, so inheritance is feasible now
+
+0.03  Sat Jul 12 16:10:07 1997
+	- DllEntryPoint for Borland
+
+0.02  Sat May 10 15:40:52 1997
+	- cleaned up one big memory leakathon (DESTROY actually gets
+	  called now on all the objects)
+	- back to XS
+	- package names are Win32::OLE and Win32::OLE::Tie now
+	- fixed misplaced DESTROY
+	- implemented OLEUninitialize via DllMain
+
+0.01  Sat Apr  5 14:23:42 1997
+	- original version; created by h2xs 1.18
+	- imported Activeware version
+

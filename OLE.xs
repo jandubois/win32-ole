@@ -90,7 +90,7 @@ void
 DoCroak(const char *pat, ...)
 {
     dSP;
-    SV *sv;
+    SV *sv = sv_2mortal(newSVpv("", 0));
 
     va_list args;
     va_start(args, pat);
@@ -565,26 +565,106 @@ SetVariantFromSV(SV* sv, VARIANT *pVariant)
 
     /* Arrays */
     if (SvTYPE(sv) == SVt_PVAV) {
-	AV *av = (AV*)sv;
-	IV len = av_len(av)+1;
+	IV index;
+	IV dim = 1;
+	IV maxdim = 2;
+	AV **pav;
+	long *pix;
+	long *plen;
+	SAFEARRAYBOUND *psab;
 	VARIANT variant;
 
-	V_ARRAY(pVariant) = SafeArrayCreateVector(VT_VARIANT, 0, len);
-	if (V_ARRAY(pVariant) == NULL) {
-	    CheckOleError(E_OUTOFMEMORY, NULL, NULL);
-	    return;
-	}
+	New(4444, pav, maxdim, AV*);
+	New(4444, pix, maxdim, long);
+	New(4444, plen, maxdim, long);
+	New(4444, psab, maxdim, SAFEARRAYBOUND);
 
-	V_VT(pVariant) = VT_VARIANT | VT_ARRAY;
-	for (IV index=0; index < len ; ++index) {
-	    SV **psv = av_fetch(av, index, 0);
-	    if (psv != NULL) {
-		SetVariantFromSV(*psv, &variant);
-		LastOleError = SafeArrayPutElement(V_ARRAY(pVariant),
-						   &index, &variant);
-		CheckOleError(LastOleError, NULL, NULL);
+	pav[0] = (AV*)sv;
+	pix[0] = 0;
+	plen[0] = av_len(pav[0])+1;
+	psab[0].cElements = plen[0];
+	psab[0].lLbound = 0;
+
+	/* Depth first walk through to determine number of dimensions */
+	for (index = 0 ; index >= 0 ; ) {
+	    SV **psv = av_fetch(pav[index], pix[index], FALSE);
+
+	    if (psv != NULL && SvROK(*psv) && SvTYPE(SvRV(*psv)) == SVt_PVAV) {
+		if (++index >= maxdim) {
+		    maxdim *= 2;
+		    Renew(pav, maxdim, AV*);
+		    Renew(pix, maxdim, long);
+		    Renew(plen, maxdim, long);
+		    Renew(psab, maxdim, SAFEARRAYBOUND);
+		}
+
+		pav[index] = (AV*)SvRV(*psv);
+		pix[index] = 0;
+		plen[index] = av_len(pav[index])+1;
+
+		if (index < dim) {
+		    if (plen[index] > psab[index].cElements)
+			psab[index].cElements = plen[index];
+		}
+		else {
+		    dim = index+1;
+		    psab[index].cElements = plen[index];
+		    psab[index].lLbound = 0;
+		}
+		continue;
+	    }
+
+	    while (index >= 0) {
+		if (++pix[index] < plen[index])
+		    break;
+		--index;
 	    }
 	}
+
+	/* Create and fill VARIANT array */
+	V_ARRAY(pVariant) = SafeArrayCreate(VT_VARIANT, dim, psab);
+	if (V_ARRAY(pVariant) == NULL)
+	    CheckOleError(E_OUTOFMEMORY, NULL, NULL);
+	else {
+	    V_VT(pVariant) = VT_VARIANT | VT_ARRAY;
+
+	    pav[0] = (AV*)sv;
+	    plen[0] = av_len(pav[0])+1;
+	    Zero(pix, dim, long);
+
+	    for (index = 0 ; index >= 0 ; ) {
+		SV **psv = av_fetch(pav[index], pix[index], FALSE);
+
+		if (psv != NULL) {
+		    if (SvROK(*psv) && SvTYPE(SvRV(*psv)) == SVt_PVAV) {
+			++index;
+			pav[index] = (AV*)SvRV(*psv);
+			pix[index] = 0;
+			plen[index] = av_len(pav[index])+1;
+			continue;
+		    }
+
+		    if (SvOK(*psv)) {
+			SetVariantFromSV(*psv, &variant);
+			LastOleError = SafeArrayPutElement(V_ARRAY(pVariant),
+							   pix, &variant);
+			CheckOleError(LastOleError, NULL, NULL);
+		    }
+		}
+
+		while (index >= 0) {
+		    if (++pix[index] < plen[index])
+			break;
+		    pix[index--] = 0;
+		}
+	    }
+	}
+
+	Safefree(pav);
+	Safefree(pix);
+	Safefree(plen);
+	Safefree(psab);
+
 	return;
     }
 
@@ -631,52 +711,54 @@ SetSVFromVariant(VARIANTARG *pVariant, SV* sv, HV *stash)
     sv_setsv(sv, &sv_undef);
 
     if (V_ISARRAY(pVariant)) {
-	AV *av;
+	AV **pav;
 	VARIANT variant;
-	int dim, index;
+	IV index;
 	long *pArrayIndex, *pLowerBound, *pUpperBound;
-	HRESULT hResult;
 
-	dim = SafeArrayGetDim(V_ARRAY(pVariant));
+	int dim = SafeArrayGetDim(V_ARRAY(pVariant));
+
 	New(4444, pArrayIndex, dim, long);
 	New(4444, pLowerBound, dim, long);
 	New(4444, pUpperBound, dim, long);
-	for(index = 1; index <= dim; ++index) {
-	    hResult = SafeArrayGetLBound(V_ARRAY(pVariant), index,
-					  &pLowerBound[index-1]);
-	    if (FAILED(hResult))
-		goto ErrorExit;
+	New(4444, pav,         dim, AV *);
+
+	for(index = 0; index < dim; ++index) {
+	    pav[index] = newAV();
+	    SafeArrayGetLBound(V_ARRAY(pVariant), index+1, &pLowerBound[index]);
+	    SafeArrayGetUBound(V_ARRAY(pVariant), index+1, &pUpperBound[index]);
 	}
 
-	for(index = 1; index <= dim; ++index) {
-	    hResult = SafeArrayGetUBound(V_ARRAY(pVariant), index,
-					  &pUpperBound[index-1]);
-	    if (FAILED(hResult))
-		goto ErrorExit;
-	}
+	memcpy(pArrayIndex, pLowerBound, dim*sizeof(long));
 
-	av = newAV();
-	if (dim < 3)
-	{
-	    memcpy(pArrayIndex, pLowerBound, dim*sizeof(long));
-	    for(index = dim-1;
-		pArrayIndex[index] <= pUpperBound[index];
-		++pArrayIndex[index])
-	    {
-		hResult = SafeArrayGetElement(V_ARRAY(pVariant), pArrayIndex,
-					      &variant);
-		if (SUCCEEDED(hResult)) {
-		    av_push(av, SetSVFromVariant(&variant, newSVpv("",0),
-						 stash));
+	while (index >= 0) {
+	    if (SUCCEEDED(SafeArrayGetElement(V_ARRAY(pVariant), 
+					      pArrayIndex, &variant)))
+		av_push(pav[dim-1], SetSVFromVariant(&variant, newSVpv("",0),
+						     stash));
+
+	    for (index = dim-1 ; index >= 0 ; --index) {
+		if (++pArrayIndex[index] <= pUpperBound[index])
+		    break;
+
+		pArrayIndex[index] = pLowerBound[index];
+		if (index > 0) {
+		    av_push(pav[index-1], newRV_noinc((SV*)pav[index]));
+		    pav[index] = newAV();
 		}
 	    }
 	}
-	sv = newRV_noinc((SV*)av);
 
-ErrorExit:
+	for (index = 1 ; index < dim ; ++index)
+	    SvREFCNT_dec((SV*)pav[index]);
+
+	sv = newRV_noinc((SV*)*pav);
+
 	Safefree(pArrayIndex);
 	Safefree(pLowerBound);
 	Safefree(pUpperBound);
+	Safefree(pav);
+
 	return sv;
     }
 

@@ -237,6 +237,7 @@ The following type correspondence holds:
           int              IV            VT_I4
         double             NV            VT_R8
         char *             PV            VT_BSTR
+        void *           ref to AV       VT_ARRAY
            ?              undef          VT_ERROR
            ?        Win32::OLE object    VT_DISPATCH
 
