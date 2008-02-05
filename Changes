@@ -1,13 +1,8 @@
 Revision history for Perl extension Win32::OLE.
 
-0.0904	(unreleased)
-	- Additional CreatePerlObjectEx(), SetSVFromVariantEx() and
-	  SetVariantFromSVEx() functions for Embedders using PERL_OBJECT.
-	- Some functions exported for use by embedders.
-	- PPD entries added into Makefile.PL
-
-0.0903	(unreleased, intended for libwin32-0.13)
+0.10	Thu Sep 10 17:32:16 1998
 	- memory corruption fix (for ->SetProperty) method by Gurusamy Sarathy.
+	- document *nitialize(), SpinMessageLoop()
 
 0.0902	(unreleased)
 	- Allow specification of apartment model to Initialize() method. Special
