@@ -7,6 +7,7 @@
  *    License or the Artistic License, as specified in the README file.
  */
 
+#include <stdlib.h>
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #include <windows.h>
 #include <objbase.h>
