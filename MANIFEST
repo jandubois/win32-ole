@@ -2,6 +2,7 @@ Changes
 Compat.pm		Compatibility layer: old toplevel OLE.pm
 Const.pm		Win32::OLE::Const module: TypeLib constants
 Enum.pm			Win32::OLE::Enum module: Collection objects
+Lite.pm                 Lightweight OLE.pm not using ANY other modules
 MANIFEST
 Makefile.PL
 NLS.pm			Win32::OLE::NLS module: National Language Support
@@ -9,7 +10,8 @@ OLE.pm
 OLE.xs
 README
 ToDo
-Variant.pm		The Win32::OLE::Variant module: VARIANT variables
+TypeInfo.pm             Win32::OLE::TypeInfo module
+Variant.pm		Win32::OLE::Variant module: VARIANT variables
 eg/constants.pl		Sample script prints all Excel defined constants
 eg/properties.pl	Sample script prints all Excel application properties
 eg/typelibs.pl		Sample script prints all registered typelib names

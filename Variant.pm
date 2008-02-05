@@ -13,7 +13,7 @@ use Exporter;
 	     Variant
 	     VT_EMPTY VT_NULL VT_I2 VT_I4 VT_R4 VT_R8 VT_CY VT_DATE VT_BSTR
 	     VT_DISPATCH VT_ERROR VT_BOOL VT_VARIANT VT_UNKNOWN VT_UI1
-	     VT_BYREF
+	     VT_ARRAY VT_BYREF
 	    );
 
 @EXPORT_OK = qw(CP_ACP CP_OEMCP);
@@ -35,16 +35,12 @@ sub VT_VARIANT {12;}
 sub VT_UNKNOWN {13;}
 sub VT_UI1 {17;}
 
+sub VT_ARRAY {0x2000;}
 sub VT_BYREF {0x4000;}
 
 # Codepages
 sub CP_ACP {0;}
 sub CP_OEMCP {1;}
-
-# Package variables
-$Warn = $^W;
-$CP   = CP_ACP;
-$LCID = 2 << 10; # LOCALE_SYSTEM_DEFAULT
 
 # following subs are pure XS code:
 # - new(type,data)
@@ -56,12 +52,14 @@ use overload '""'     => sub {$_[0]->As(VT_BSTR)},
              '0+'     => sub {$_[0]->As(VT_R8)},
              fallback => 1; 
 
-sub LastError {
-    no strict 'refs';
-    my $LastError = "$_[0]::LastError";
-    $$LastError = $_[1] if defined $_[1];
-    return $$LastError;
-}
+# XXX Call Win32::OLE->LastError(@_);
+
+#  sub LastError {
+#      no strict 'refs';
+#      my $LastError = "$_[0]::LastError";
+#      $$LastError = $_[1] if defined $_[1];
+#      return $$LastError;
+#  }
 
 sub Variant {
     return Win32::OLE::Variant->new(@_);

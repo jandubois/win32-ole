@@ -1,6 +1,6 @@
 ########################################################################
 #
-# Test Win32::OLE.pm compatibility module using MS Excel
+# Test Win32::OLE.pm module using MS Excel
 #
 ########################################################################
 # If you rearrange the tests, please renumber:
@@ -176,7 +176,7 @@ foreach my $i (1..10) {
 }
 my $Cell = $Sheet->Cells(5,5);
 $Type = Win32::OLE->QueryObjectType($Cell);
-print "# Cells object type is $Type\n";
+printf "# Cells (%s) object type is $Type\n", ref($Cell);
 $Value = $Cell->{Value};
 print "# Value is \"$Value\"\n";
 print "not " unless $Cell->{Value} == 25;
@@ -322,7 +322,7 @@ my $ANSI = valof $Cell;
 $Excel::CP = CP_OEMCP;
 my $OEM = valof $Cell;
 print "# ANSI(cp1252) -> OEM(cp437/cp850): 163 -> 156\n";
-print "# ANSI is \"$ANSI\" and OEM is \"$OEM\"\n";
+printf "# ANSI is \"$ANSI\" (%d) and OEM is \"$OEM\" (%d)\n", ord($ANSI), ord($OEM);
 print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
 printf "ok %d\n", ++$Test;
 

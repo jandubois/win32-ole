@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1001';
+$VERSION = '0.1003';
 
 use Carp;
 use Exporter;
@@ -14,7 +14,7 @@ use DynaLoader;
 @ISA = qw(Exporter DynaLoader);
 
 @EXPORT = qw();
-@EXPORT_OK = qw(CP_ACP CP_OEMCP in valof with OVERLOAD
+@EXPORT_OK = qw(CP_ACP CP_OEMCP CP_MACCP CP_UTF7 CP_UTF8 in valof with OVERLOAD
 		DISPATCH_METHOD DISPATCH_PROPERTYGET
 		DISPATCH_PROPERTYPUT DISPATCH_PROPERTYPUTREF);
 @EXPORT_FAIL = qw(OVERLOAD);
@@ -32,167 +32,10 @@ OVERLOAD
     return @_;
 }
 
-bootstrap Win32::OLE;
-
-$Warn = 1;
-
-sub CP_ACP {0;}    # ANSI codepage
-sub CP_OEMCP {1;}  # OEM codepage
-
-sub DISPATCH_METHOD          {1;}
-sub DISPATCH_PROPERTYGET     {2;}
-sub DISPATCH_PROPERTYPUT     {4;}
-sub DISPATCH_PROPERTYPUTREF  {8;}
-
-sub COINIT_MULTITHREADED     {0;}  # Default
-sub COINIT_APARTMENTTHREADED {2;}  # Use single threaded apartment model
-sub COINIT_OLEINITIALIZE     {-1;} # Use OleInitialize instead of CoInitializeEx
-
-# The following class methods are pure XS code. They will delegate
-# to Dispatch when called as object methods.
-#
-# - new(progid,destroy)
-# - GetActiveObject(progid)
-# - GetObject(pathname)
-# - QueryObjectType(object)
-#
-# - Initialize(coinit)
-# - Uninitialize()
-# - SpinMessageLoop()
-#
-# The following method is pure XS (and not available as OLE method)
-# - DESTROY()
-#
-
-
-# CreateObject is defined here only because it is documented in the
-# "Learning Perl on Win32 Systems" Gecko book. Please use Win32::OLE->new().
-sub CreateObject {
-    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'CreateObject';
-	goto &AUTOLOAD;
-    }
-
-    $_[1] = Win32::OLE->new($_[0]);
-    return defined $_[1];
-}
-
-sub LastError {
-    unless (defined $_[0]) {
-	# Win32::OLE::LastError() will always return $Win32::OLE::LastError
-	return $LastError;
-    }
-
-    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'LastError';
-	goto &AUTOLOAD;
-    }
-
-    no strict 'refs';
-    my $LastError = "$_[0]::LastError";
-    $$LastError = $_[1] if defined $_[1];
-    return $$LastError;
-}
-
-sub Invoke {
-    my ($self, $method, @args) = @_;
-    my $retval;
-    $self->Dispatch($method, $retval, @args);
-    return $retval;
-}
-
-sub SetProperty {
-    my ($self, $method, @args) = @_;
-    my $retval;
-    my $wFlags = DISPATCH_PROPERTYPUT;
-    if (@args) {
-	# If the value is an object then it must be set by reference!
-	my $value = $args[scalar(@args)-1];
-	if (UNIVERSAL::isa($value, 'Win32::OLE')) {
-	    $wFlags = DISPATCH_PROPERTYPUTREF;
-	}
-	elsif (UNIVERSAL::isa($value,'Win32::OLE::Variant')) {
-	    my $type = $value->Type;
-	    # VT_DISPATCH and VT_UNKNOWN represent COM objects
-	    $wFlags = DISPATCH_PROPERTYPUTREF if $type == 9 || $type == 13;
-	}
-    }
-    $self->Dispatch([$wFlags, $method], $retval, @args);
-    return $retval;
-}
-
-sub AUTOLOAD {
-    my $self = shift;
-    my $retval;
-    $AUTOLOAD =~ s/.*:://o;
-    croak("Cannot autoload class method \"$AUTOLOAD\"") 
-      unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
-    my $success = $self->Dispatch($AUTOLOAD, $retval, @_);
-    unless (defined $success || ($^H & 0x200)) {
-	# Retry default method if C<no strict 'subs';>
-	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
-    }
-    return $retval;
-}
-
-sub in {
-    my @res;
-    while (@_) {
-	my $this = shift;
-	if (UNIVERSAL::isa($this, 'Win32::OLE')) {
-	    require Win32::OLE::Enum;
-	    push @res, Win32::OLE::Enum->All($this);
-	}
-	elsif (ref($this) eq 'ARRAY') {
-	    push @res, @$this;
-	}
-	else {
-	    push @res, $this;
-	}
-    }
-    return @res;
-}
-
-sub valof {
-    my $arg = shift;
-    if (UNIVERSAL::isa($arg, 'Win32::OLE')) {
-	require Win32::OLE::Variant;
-	my ($class) = overload::StrVal($arg) =~ /^([^=]+)=/;
-	no strict 'refs';
-	local $Win32::OLE::Variant::CP = ${$class."::CP"};
-	local $Win32::OLE::Variant::LCID = ${$class."::LCID"};
-	use strict 'refs';
-	# VT_EMPTY variant for return code
-	my $variant = Win32::OLE::Variant->new(0,0);
-	$arg->Dispatch(undef, $variant);
-	return $variant->Value;
-    }
-    $arg = $arg->Value if UNIVERSAL::can($arg, 'Value');
-    return $arg;
-}
-
-sub with {
-    my $object = shift;
-    while (@_) {
-	my $property = shift;
-	$object->{$property} = shift;
-    }
-}
-
-########################################################################
-
-package Win32::OLE::Tie;
-
-# Only retry default method under C<no strict 'subs';>
-
-sub FETCH {
-    my ($self,$key) = @_;
-    $self->Fetch($key, !($^H & 0x200));
-}
-
-sub STORE {
-    my ($self,$key,$value) = @_;
-    $self->Store($key, $value, !($^H & 0x200));
+unless (defined &Dispatch) {
+    # Use regular DynaLoader if XS part is not yet initialized
+    bootstrap Win32::OLE;
+    require Win32::OLE::Lite;
 }
 
 1;
@@ -281,13 +124,17 @@ The C<Initialize> class method can be used to specify an alternative
 apartment model for the Perl thread. It must be called before the
 first object is created. Valid values for COINIT are:
 
-  Win32::OLE::COINIT_APARTMENTTHREADED - single threaded
-  Win32::OLE::COINIT_MULTITHREADED     - the default
-  Win32::OLE::COINIT_OLEINITIALIZE     - single threaded, additional OLE stuff
+  Win32::OLE::COINIT_APARTMENTTHREADED  - single threaded
+  Win32::OLE::COINIT_MULTITHREADED      - the default
+
+  Win32::OLE::COINIT_OLEINITIALIZE      - single threaded, additional OLE stuff
+  Win32::OLE::COINIT_ALREADYINITIALIZED - COM is already initialized
 
 COINIT_OLEINITIALIZE is sometimes needed when an OLE object uses
 additional OLE compound document technologies not available from the
 normal COM subsystem (for example MAPI.Session seems to require it).
+COINIT_ALREADYINITIALIZED should be used when the COM subsystem is
+already initialized and you don't want Win32::OLE to do it again.
 Both COINIT_OLEINITIALIZE and COINIT_APARTMENTTHREADED create a hidden
 top level window and a message queue for the Perl process. This may
 create problems with other application, because Perl normally doesn't
@@ -817,6 +664,6 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.0904	19 September 1998
+Version 0.1003	  12 November 1998
 
 =cut

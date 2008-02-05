@@ -1,33 +1,17 @@
 # The documentation is at the __END__
 
 package Win32::OLE::Enum;
-use strict;
-require Win32::OLE; # Make sure the XS bootstrap has been called
+1;
 
-# pure XS methods:
+# everything is pure XS in Win32::OLE::Enum
 # - new
 # - DESTROY
 #
+# - All
 # - Clone
 # - Next
 # - Reset
 # - Skip
-
-sub All {
-    my $self = shift;
-    # C<All> can also be called as a class method like:
-    # my @list = Win32::OLE::Enum->All($Excel->Workbooks);
-    $self = $self->new(shift) unless ref $self;
-    return unless defined $self;
-
-    my @result;
-    while (defined(my $next = $self->Next)) {
-        push @result, $next;
-    }
-    return @result;
-}
-
-1;
 
 __END__
 
