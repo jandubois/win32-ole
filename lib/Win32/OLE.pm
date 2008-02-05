@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError $_NewEnum $_Unique);
 
-$VERSION = '0.17';
+$VERSION = '0.1702';
 
 use Carp;
 use Exporter;
@@ -535,6 +535,20 @@ This variable controls the locale idnetifier used for all OLE calls.
 It is set to LOCALE_NEUTRAL by default.  Please check the
 L<Win32::OLE::NLS> module for other locale related information.
 
+=item Variant
+
+This options controls how method calls and property accessors return
+values of type VT_CY and VT_DECIMAL are being returned.  By default
+VT_CY values are turned into strings and VT_DECIMAL values into
+floating point numbers.  If the C<Variant> option is enabled, these
+values are returned as Win32::OLE::Variant objects, just like VT_DATE
+and VT_ERROR values.  If the Win32::OLE::Variant module is also
+loaded, then all values should still behave as before in string and in
+numeric context.
+
+The only reason that the C<Variant> behavior is not the default is that
+this is an incompatible change that might break existing programs.
+
 =item Warn
 
 This variable determines the behavior of the Win32::OLE module when
@@ -949,6 +963,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.17	  11 August 2003
+Version 0.1702	  5 September 2004
 
 =cut

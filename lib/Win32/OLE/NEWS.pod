@@ -8,6 +8,24 @@ This file contains a history of user visible changes to the
 Win32::OLE::* modules. Only new features and major bug fixes that
 might affect backwards compatibility are included.
 
+=head1 Version 0.18
+
+=head2 VT_CY and VT_DECIMAL return values handled differently
+
+The new C<Variant> option enables values of VT_CY or VT_DECIMAL type
+to be returned as Win32::OLE::Variant objects instead of being
+converted into strings and numbers respectively.  This is similar to
+the change in Win32::OLE version 0.12 to VT_DATE and VT_ERROR values.
+The Win32::OLE::Variant module must be included to make sure that
+VT_CY and VT_DECIMAL values behave as before in numeric or string
+contexts.
+
+Because the new behavior is potentially incompatible, it must be
+explicitly enabled:
+
+    Win32::OLE->Option(Variant => 1);
+
+
 =head1 Version 0.17
 
 =head2 New nullstring() function in Win32::OLE::Variant

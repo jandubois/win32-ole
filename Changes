@@ -3,6 +3,12 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1702	unreleased, Sun, September 5th 2004
+	- fix freeing of VT_BYREF Win32::OLE::Variant objects
+
+0.1701	unreleased, Thu, August 28th 2003
+	- add Win32::OLE->Option(Variant => 1) support
+
 0.17	Mon, August 11th 2003
 	- add IsNothing and IsNullString predicate methods to
 	  Win32::OLE::Variant

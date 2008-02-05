@@ -92,7 +92,7 @@ printf "ok %d\n", ++$Test;
 # 11. Special case: VT_UI1 with string argument implies VT_ARRAY
 $v = Variant(VT_UI1, "Some string");
 printf "# Type=%x String=\"%s\"\n", $v->Type, $v->Value;
-print "not " unless $v->Type == VT_UI1|VT_ARRAY && $v->Value eq "Some string";
+print "not " unless $v->Type == (VT_UI1|VT_ARRAY) && $v->Value eq "Some string";
 printf "ok %d\n", ++$Test;
 
 # 12. A numeric initializer should create a normal VT_UI1 variant

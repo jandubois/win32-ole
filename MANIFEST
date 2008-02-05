@@ -17,7 +17,7 @@ lib/Win32/OLE/TPJ.pod	Win32::OLE article from "The Perl Journal" #10
 lib/Win32/OLE/TypeInfo.pm       Win32::OLE::TypeInfo module
 lib/Win32/OLE/Variant.pm	Win32::OLE::Variant module: VARIANT variables
 
-browser/Browser.dhtml   OLE Automation type library browser
+browser/Browser.htm	OLE Automation type library browser
 browser/Browser.html	FRAMESET document for typelib browser
 
 browser/Class.png

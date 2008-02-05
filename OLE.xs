@@ -110,6 +110,7 @@ static const LCID lcidSystemDefault = 2 << 10;
 /* static const LCID lcidDefault = 0; language neutral */
 static const LCID lcidDefault = lcidSystemDefault;
 static const UINT cpDefault = CP_ACP;
+static const BOOL varDefault = FALSE;
 static char PERL_OLE_ID[] = "___Perl___OleObject___";
 static const int PERL_OLE_IDLEN = sizeof(PERL_OLE_ID)-1;
 
@@ -129,6 +130,8 @@ static char LCID_NAME[] = "LCID";
 static const int LCID_LEN = sizeof(LCID_NAME)-1;
 static char CP_NAME[] = "CP";
 static const int CP_LEN = sizeof(CP_NAME)-1;
+static char VAR_NAME[] = "Variant";
+static const int VAR_LEN = sizeof(VAR_NAME)-1;
 static char WARN_NAME[] = "Warn";
 static const int WARN_LEN = sizeof(WARN_NAME)-1;
 static char _NEWENUM_NAME[] = "_NewEnum";
@@ -2306,6 +2309,33 @@ MyVariantCopy(VARIANTARG *dest, VARIANTARG *src)
     return VariantCopy(dest, src);
 }
 
+void
+ClearVariantObject(WINOLEVARIANTOBJECT *pVarObj)
+{
+    if (!pVarObj)
+        return;
+
+    VARIANT *pVariant = &pVarObj->variant;
+    VARTYPE vt = V_VT(pVariant);
+
+    if (vt & VT_BYREF) {
+        switch (vt & ~VT_BYREF) {
+        case VT_BSTR:
+            SysFreeString(*V_BSTRREF(pVariant));
+            break;
+        case VT_DISPATCH:
+            (*V_DISPATCHREF(pVariant))->Release();
+            break;
+        case VT_UNKNOWN:
+            (*V_UNKNOWNREF(pVariant))->Release();
+            break;
+        }
+        VariantInit(pVariant);
+    }
+    else
+        VariantClear(pVariant);
+}
+
 SV *
 SetSVFromGUID(pTHX_ REFGUID rguid)
 {
@@ -2986,6 +3016,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
     case VT_ERROR:
     case VT_DATE:
     {
+ ConvertToVariant:
 	SV *classname;
 	WINOLEVARIANTOBJECT *pVarObj;
 	Newz(0, pVarObj, 1, WINOLEVARIANTOBJECT);
@@ -3049,6 +3080,10 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
     case VT_DECIMAL:
     {
+	BOOL var = QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
+        if (var)
+            goto ConvertToVariant;
+
 	VARIANT variant;
 	VariantInit(&variant);
 	hr = VariantChangeTypeEx(&variant, pVariant, lcidDefault, 0, VT_R8);
@@ -3061,6 +3096,10 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
     case VT_CY:
     default:
     {
+	BOOL var = QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
+        if (var)
+            goto ConvertToVariant;
+
 	LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
 	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 	VARIANT variant;
@@ -3218,8 +3257,7 @@ Uninitialize(pTHX_ PERINTERP *pInterp)
 
 	    case WINOLEVARIANT_MAGIC: {
 		WINOLEVARIANTOBJECT *pVarObj = (WINOLEVARIANTOBJECT*)pHeader;
-		VariantClear(&pVarObj->byref);
-		VariantClear(&pVarObj->variant);
+                ClearVariantObject(pVarObj);
 		break;
 	    }
 
@@ -3800,7 +3838,7 @@ PPCODE:
 	if (sv_isobject(retval) && sv_derived_from(retval, szWINOLEVARIANT)) {
 	    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(aTHX_ retval);
 	    if (pVarObj) {
-		VariantClear(&pVarObj->byref);
+		ClearVariantObject(pVarObj);
 		MyVariantCopy(&pVarObj->variant, &result);
 		ST(0) = &PL_sv_yes;
 	    }
@@ -4568,7 +4606,7 @@ PPCODE:
 	    wFlags = DISPATCH_PROPERTYPUTREF;
 
 	hr = pObj->pDispatch->Invoke(dispID, IID_NULL, lcid, wFlags,
-				      &dispParams, NULL, &excepinfo, &argErr);
+                                     &dispParams, NULL, &excepinfo, &argErr);
 	if (FAILED(hr)) {
 	    err = sv_newmortal();
 	    sv_setpvf(err, "in PROPERTYPUT%s \"%s\"",
@@ -5278,8 +5316,7 @@ PPCODE:
     WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(aTHX_ self);
     if (pVarObj) {
 	RemoveFromObjectChain(aTHX_ (OBJECTHEADER*)pVarObj);
-	VariantClear(&pVarObj->byref);
-	VariantClear(&pVarObj->variant);
+        ClearVariantObject(pVarObj);
 	Safefree(pVarObj);
     }
 

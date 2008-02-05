@@ -91,7 +91,7 @@ sub LastError {
     return $$LastError;
 }
 
-my $Options = "^(?:CP|LCID|Warn|_NewEnum|_Unique)\$";
+my $Options = "^(?:CP|LCID|Warn|Variant|_NewEnum|_Unique)\$";
 
 sub Option {
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
