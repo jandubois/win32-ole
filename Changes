@@ -1,20 +1,25 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0804
+	- Fix breakage in GetOleObject (from 0.0801) for 5.004_04 and earlier
+	- Ignore DCOM hostname if it seems to be the local machine
+
 0.0803
 	- Rearrange t/3_ole.t to behave nicely when Excel is not installed
 	- Win32::OLE->Dispatch: only warn about unidentifiable method name
-	  when C<use strict "subs"> is in effect.
-	- Most error msgs and warnings are prefixed with Win32::OLE version#.
+	  when C<use strict "subs"> is in effect
+	- Most error msgs and warnings are prefixed with Win32::OLE version#
 
 0.0802
 	- Win32::OLE->new(['Machine', 'Prog.Id']) does a remote registry lookup
 	  if the Prog.Id is not registered locally.
 	- CLSCTX changed to CLSCTX_REMOTE_SERVER when a machine is specified.
-	  Otherwise OLE would still prefer a locall server when available.
+	  Otherwise OLE would still prefer a locall server when available
 
 0.0801
 	- Win32::OLE::Tie::(FETCH|STORE) now interpret $^H correctly
 	- removed all Perl related stuff from DllMain
+	- Additional checks in GetOleObject
 
 0.08    Mon May 11 03:36:49 1998
 	- Make sure mg_get() gets called during GetOleObject()

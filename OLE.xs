@@ -662,10 +662,14 @@ GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
     if (sv_isobject(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 
+#if (PATCHLEVEL > 4) || ((PATCHLEVEL == 4) && (SUBVERSION > 4))
 	if (SvGMAGICAL(*psv))
 	    mg_get(*psv);
 
 	if (psv != NULL && SvIOK(*psv)) {
+#else
+	if (psv != NULL) {
+#endif
 	    WINOLEOBJECT *pObj = (WINOLEOBJECT*)SvIV(*psv);
 
 	    DBG(("GetOleObject = |%lx|\n", pObj));
@@ -1645,6 +1649,21 @@ PPCODE:
 	pszHost = SvPV(host, na);
 	if (*pszHost == '\0')
 	    pszHost = NULL;
+	else {
+	    /* ignore hostname if it is the local machine name */
+	    char szComputerName [MAX_COMPUTERNAME_LENGTH+1];
+	    DWORD dwSize = sizeof(szComputerName);
+	    char *pszHostName = pszHost;
+
+	    while (*pszHostName == '\\')
+		++pszHostName;
+
+	    if (GetComputerName(szComputerName, &dwSize) && 
+		stricmp(pszHostName, szComputerName) == 0)
+	    {
+		pszHost = NULL;
+	    }
+	}
     }
 
     pBuffer = GetWideChar(pszProgID, Buffer, OLE_BUF_SIZ, cp);
