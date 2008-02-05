@@ -607,11 +607,7 @@ ReleasePerlObject(WINOLEOBJECT *pObj)
 WINOLEOBJECT *
 GetOleObject(SV *sv, BOOL bDESTROY=FALSE)
 {
-    /* Don't use sv_isobject/sv_derived_from; they'll call mg_get!
-     * This will call the default OLE method if numeric/stringify
-     * overloading has been enabled.
-     */
-    if (sv != NULL && SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
+    if (sv_isobject(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 	if (psv != NULL) {
 	    WINOLEOBJECT *pObj = (WINOLEOBJECT*)SvIV(*psv);

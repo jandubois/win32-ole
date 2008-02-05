@@ -1,5 +1,8 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0616
+	- Make sure mg_get() gets called during GetOleObject()
+
 0.0615
 	- use SvIMMORTAL instead of SvREADONLY where applicable
 	- use newCONSTSUB in Win32::OLE::Const to define inlineable functions
