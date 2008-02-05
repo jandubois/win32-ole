@@ -14,6 +14,7 @@ eg/constants.pl    Sample script prints all Excel defined constants.
 eg/properties.pl   Sample script prints all Excel application properties.
 eg/typelibs.pl     Sample script prints all registered typelib names.
 eg/word2pod.pl     Prototype of a Word -> POD translator
+eg/word2xxx.pl     Sample file type converter
 t/1_nls.t          Regression tests for Win32::OLE::NLS module
 t/2_variant.t      Regression tests for the Win32::OLE::Variant module
 t/3_ole.t          Regression tests for Win32::OLE using Excel 7 and above

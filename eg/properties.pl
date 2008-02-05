@@ -2,6 +2,7 @@
 
 use strict;
 use Win32::OLE;
+$Win32::OLE::Warn = 3;
 
 my $Excel = Win32::OLE->new('Excel.Application', 'Quit');
 # Add a workbook to get some more property values defined

@@ -73,8 +73,9 @@ use Win32::OLE qw(CP_ACP);
 use strict;
 
 # Disable overload; unfortunately "no overload" doesn't do it :-(
-use overload '""'     => sub {overload::StrVal($_[0])},
-             '0+'     => sub {overload::StrVal($_[0])};
+# Overloading is no longer enabled by default in Win32::OLE
+#use overload '""'     => sub {overload::StrVal($_[0])},
+#             '0+'     => sub {overload::StrVal($_[0])};
 
 use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError $Tie);
 @ISA = qw(Win32::OLE);

@@ -61,7 +61,8 @@ static const DWORD WINOLEENUM_MAGIC = 0x12344322;
 static const DWORD WINOLEVARIANT_MAGIC = 0x12344323;
 
 static const LCID lcidSystemDefault = 2 << 10;
-static const LCID lcidDefault = 0; /* language neutral */
+/* static const LCID lcidDefault = 0; language neutral */
+static const LCID lcidDefault = lcidSystemDefault;
 static const UINT cpDefault = CP_ACP;
 static char PERL_OLE_ID[] = "___Perl___OleObject___";
 static const int PERL_OLE_IDLEN = sizeof(PERL_OLE_ID)-1;
@@ -230,27 +231,18 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 {
     dSP;
 
-    /* Set $Win32::OLE::LastError */
+    /* Find $Win32::OLE::LastError */
     SV *sv = sv_2mortal(newSVpv(HvNAME(stash), 0));
     sv_catpvn(sv, "::", 2);
     sv_catpvn(sv, LASTERR_NAME, LASTERR_LEN);
-    DBG(("Setting %s to %08x\n", SvPV(sv, na), res));
-
     SV *lasterr = perl_get_sv(SvPV(sv, na), TRUE);
-    if (lasterr != NULL)
-	sv_setiv(lasterr, (IV)res);
-    else {
+    if (lasterr == NULL) {
 	warn("Win32::OLE: ReportOleError: couldnot create package variable %s",
 	     LASTERR_NAME);
 	DEBUGBREAK;
     }
 
     IV warn = QueryPkgVar(stash, WARN_NAME, WARN_LEN, 0);
-
-    if (warn == 0 || (warn == 1 && !dowarn)) {
-	ReleaseExcepInfo(pExcepInfo);
-	return;
-    }
 
     SvCUR_set(sv, 0);
 
@@ -335,6 +327,17 @@ ReportOleError(HV *stash, HRESULT res, EXCEPINFO *pExcepInfo, SV *svDetails)
 	    *pLastBlank = '\n';
 	    cch = pch - pLastBlank;
 	}
+    }
+
+    if (lasterr != NULL) {
+	sv_setiv(lasterr, (IV)res);
+	sv_setpv(lasterr, SvPVX(sv));
+	SvIOK_on(lasterr);
+    }
+
+    if (warn == 0 || (warn == 1 && !dowarn)) {
+	ReleaseExcepInfo(pExcepInfo);
+	return;
     }
 
     PUSHMARK(sp) ;
@@ -531,8 +534,9 @@ GetOleObject(SV *sv)
     if (sv != NULL && SvROK(sv) && SvTYPE(SvRV(sv)) == SVt_PVHV) {
 	SV **psv = hv_fetch((HV*)SvRV(sv), PERL_OLE_ID, PERL_OLE_IDLEN, 0);
 	if (psv != NULL) {
-	    DBG(("GetOleObject = |%lx|\n", SvIV(*psv)));
-	    return CheckOleStruct(SvIV(*psv));
+	    IV addr = SvIV(*psv);
+	    DBG(("GetOleObject = |%lx|\n", addr));
+	    return CheckOleStruct(addr);
 	}
     }
     warn("Win32::OLE: GetOleObject() Not a %s object", szWINOLE);
@@ -613,14 +617,18 @@ void
 FetchTypeInfo(WINOLEOBJECT *pObj)
 {
     unsigned int count;
+    ITypeInfo *pTypeInfo;
     LPTYPEATTR pTypeAttr;
 
     if (pObj->pTypeInfo != NULL)
 	return;
 
     HRESULT res = pObj->pDispatch->GetTypeInfoCount(&count);
-    if (res == E_NOTIMPL || count == 0)
+    if (res == E_NOTIMPL || count == 0) {
+	DBG(("GetTypeInfoCount returned %u (count=%d)", res, count));
 	return;
+    }
+
     if (CheckOleError(pObj->stash, res, NULL, NULL)) {
 	warn("Win32::OLE: FetchTypeInfo() GetTypeInfoCount failed");
 	DEBUGBREAK;
@@ -628,21 +636,70 @@ FetchTypeInfo(WINOLEOBJECT *pObj)
     }
 
     LCID lcid = QueryPkgVar(pObj->stash, LCID_NAME, LCID_LEN, lcidDefault);
-    res = pObj->pDispatch->GetTypeInfo(0, lcid, &pObj->pTypeInfo);
+    res = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
     if (CheckOleError(pObj->stash, res, NULL, NULL))
 	return;
 
-    res = pObj->pTypeInfo->GetTypeAttr(&pTypeAttr);
-    if (CheckOleError(pObj->stash, res, NULL, NULL)) {
-	pObj->pTypeInfo->Release();
-	pObj->pTypeInfo = NULL;
+    res = pTypeInfo->GetTypeAttr(&pTypeAttr);
+    if (FAILED(res)) {
+	pTypeInfo->Release();
+	ReportOleError(pObj->stash, res, NULL, NULL);
 	return;
     }
 
-    pObj->cFuncs = pTypeAttr->cFuncs;
-    pObj->cVars = pTypeAttr->cVars;
-    pObj->PropIndex = 0;
-    pObj->pTypeInfo->ReleaseTypeAttr(pTypeAttr);
+    if (pTypeAttr->typekind != TKIND_DISPATCH) {
+	int cImplTypes = pTypeAttr->cImplTypes;
+	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
+	pTypeAttr = NULL;
+
+	for (int i=0 ; i < cImplTypes ; ++i) {
+	    HREFTYPE hreftype;
+	    ITypeInfo *pRefTypeInfo;
+
+	    res = pTypeInfo->GetRefTypeOfImplType(i, &hreftype);
+	    if (FAILED(res))
+		break;
+
+	    res = pTypeInfo->GetRefTypeInfo(hreftype, &pRefTypeInfo);
+	    if (FAILED(res))
+		break;
+
+	    res = pRefTypeInfo->GetTypeAttr(&pTypeAttr);
+	    if (FAILED(res)) {
+		pRefTypeInfo->Release();
+		break;
+	    }
+
+	    if (pTypeAttr->typekind == TKIND_DISPATCH) {
+		pTypeInfo->Release();
+		pTypeInfo = pRefTypeInfo;
+		break;
+	    }
+
+	    pRefTypeInfo->ReleaseTypeAttr(pTypeAttr);
+	    pRefTypeInfo->Release();
+	    pTypeAttr = NULL;
+	}
+    }
+
+    if (FAILED(res)) {
+	pTypeInfo->Release();
+	ReportOleError(pObj->stash, res, NULL, NULL);
+	return;
+    }
+
+    if (pTypeAttr != NULL) {
+	if (pTypeAttr->typekind == TKIND_DISPATCH) {
+	    pObj->cFuncs = pTypeAttr->cFuncs;
+	    pObj->cVars = pTypeAttr->cVars;
+	    pObj->PropIndex = 0;
+	    pObj->pTypeInfo = pTypeInfo;
+	}
+
+	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
+	if (pObj->pTypeInfo == NULL)
+	    pTypeInfo->Release();
+    }
 
 }   /* FetchTypeInfo */
 
@@ -1201,7 +1258,7 @@ DllMain
 	 * Only external resources are cleaned up here.
 	 */
 
-	/* XXX Should we EnterCriticalSection(&CriticalSection); */
+	/* XXX Should we EnterCriticalSection(&CriticalSection) ??? */
 	while (g_pObj != NULL) {
 	    DBG(("Cleaning out escaped object |%lx|\n", g_pObj));
 
@@ -1987,8 +2044,8 @@ ALIAS:
 PPCODE:
 {
     /* NEXTKEY has an additional "lastkey" arg, which is not needed here */
-
     WINOLEOBJECT *pObj = GetOleObject(self);
+    DBG(("FIRST/NEXTKEY (%d) called, pObj=%p\n", ix, pObj));
     if (pObj == NULL)
 	XSRETURN_UNDEF;
 
@@ -2124,7 +2181,7 @@ PPCODE:
 		LPVARDESC pVarDesc;
 
 		res = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
-		/* XXX DESTRUCTOR */
+		/* XXX LEAK alert */
 		if (CheckOleError(stash, res, NULL, NULL))
 		    continue;
 
@@ -2145,9 +2202,10 @@ PPCODE:
 		    char *pszName = GetMultiByte(bstr, szName, sizeof(szName),
 						 cp);
 		    SV *sv = newSVpv("",0);
-		    /* XXX check res */
+		    /* XXX LEAK alert */
 		    res = SetSVFromVariant(pVarDesc->lpvarValue, sv, stash);
-		    hv_store(hv, pszName, strlen(pszName), sv, 0);
+		    if (!CheckOleError(stash, res, NULL, NULL))
+			hv_store(hv, pszName, strlen(pszName), sv, 0);
 
 		    SysFreeString(bstr);
 		    ReleaseBuffer(pszName, szName);
@@ -2617,6 +2675,26 @@ PPCODE:
     }
     ST(0) = sv;
     XSRETURN(1);
+}
+
+void
+GetStringType(lcid,type,str)
+    IV lcid
+    IV type
+    SV *str
+PPCODE:
+{
+    STRLEN len;
+    char *string = SvPV(str, len);
+    unsigned short *pCharType;
+
+    New(0, pCharType, len, unsigned short);
+    if (GetStringTypeA(lcid, type, string, len, pCharType)) {
+	EXTEND(sp, len);
+	for (int i=0 ; i < len ; ++i)
+	    PUSHs(sv_2mortal(newSViv(pCharType[i])));
+    }
+    Safefree(pCharType);
 }
 
 void

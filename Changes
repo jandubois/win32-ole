@@ -1,5 +1,16 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0605
+	- Property enumeration now dereferences TKIND_COCLASS etc.
+	- Overloading in Win32::OLE now only enabled by OVERLOAD pseudotarget
+	- Win32::OLE::CreateObject function for compatibility w/"Learning Perl"
+	- Win32::OLE->LastError returns a dual value now (IV and PV)
+	- Removed unsupported TKIND_ and VT_ constants from Win32::OLE::Variant
+	- lcidDefault changed back to LOCALE_SYSTEM_DEFAULT, the language neutral
+	  setting didn't allow portable scripts either
+	- Sample file type converter script in eg/word2xxx.pl
+	- valof uses CP and LCID of arg class for variant conversion
+
 0.0604
 	- New package variable Win32::OLE::Tie specifies 'Win32::OLE::Tie' class
 	- Win32::OLE::Tie FIRSTENUM/NEXTENUM added for compatibility mode

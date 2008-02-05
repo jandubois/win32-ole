@@ -68,3 +68,13 @@ $v->ChangeType(VT_BSTR);
 printf "# VT_BSTR Value in lcid=$lcidEnglish is \"%s\"\n", $v->As(VT_BSTR);
 print "not " unless $v->Type == VT_BSTR && "$v" eq "3.1415";
 printf "ok %d\n", ++$Test;
+
+# 8. Try an invalid conversion and test LastError() method
+$Win32::OLE::Variant::Warn = 0;
+Win32::OLE::Variant->LastError(0);
+my $Before = Win32::OLE::Variant->LastError;
+$v = Variant(VT_BSTR, "Five");
+$v->ChangeType(VT_I4);
+printf "# Before: $Before After: %d\n", Win32::OLE::Variant->LastError;
+print "not " unless $Before == 0 && Win32::OLE::Variant->LastError != 0;
+printf "ok %d\n", ++$Test;

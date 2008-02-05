@@ -1,34 +1,24 @@
 # The following items WILL BE done in the near future :-)
 
-- Check for memory leaks once more :-)
+- There is a possible memory leak in Win32::OLE::Const::_Load when
+  this function croaks (because $Warn is set to 3) and the croak
+  is catched in a __DIE__ handler.
 
-- BYREF variants
-
-- SAFEARRAY creation/access methods for Variants
-
-- Documentation:
-  CP, LCID
-  Warn
-  warning about reblessing Win32::OLE objects
-  Excel: Don't change lcid on the fly!
-  Word: background printing
-
-- Win32::OLE::Variant needs a LastError method too!
+# This file contains random thoughts and notes about what might be
+# changed in future versions of Win32::OLE.
+# Note: No particular order, no promises!
 
 - Test suite:
   Enum
   Variants
   BYREF variants
   SAFEARRAYs
-  Unicode
   Compatibility module
     PUTPROPERTY using "unnamed" method ????
 
-# This file contains random thoughts and notes about what might be
-# changed in future versions of Win32::OLE.
-# Note: No particular order, no promises!
+- BYREF variants: VT_DISPATCH, VT_ARRAY?
 
-- Cleanup Win32::OLE namespace
+- SAFEARRAY creation/access methods for Variants
 
 - Provide access to instance data for subclassing.
   Win32::OLE objects use the tied hash mechanism for set/getproperty,
@@ -43,8 +33,6 @@
   - Automatically assign new OLE objects to a subclass, if that
     namespace exists and it "isa" Win32::OLE subclass.
     (e.g. automaticall assign all Excel chart objects to Excel::Chart)
-
-- Add some Array helper stuff to Win32::OLE::Variant
 
 - Better error messages
   Use Grahams Error.pm module when it has been accepted by p5p.

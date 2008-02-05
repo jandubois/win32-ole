@@ -33,8 +33,11 @@ sub Load {
     my ($hTypelib,$hClsid,$hVersion,$hLangid);
     my @found;
 
-    $main::HKEY_CLASSES_ROOT->Create('TypeLib',$hTypelib) 
-      or croak "Cannot access HKEY_CLASSES_ROOT\\Typelib";
+    unless ($main::HKEY_CLASSES_ROOT->Create('TypeLib',$hTypelib)) {
+	carp "Cannot access HKEY_CLASSES_ROOT\\Typelib";
+	return;
+    }
+
     my $Clsids = [];
     $hTypelib->GetKeys($Clsids);
 
@@ -111,9 +114,9 @@ Win32::OLE::Const - Extract constant definitions from TypeLib
 
 This modules makes all constants from a registered OLE type library
 available to the Perl program. The constant definitions can be
-imported as scalar variables providing compile time name checking.
+imported as functions, providing compile time name checking.
 Alternatively the constants can be returned in a hash reference
-which avoids predefining various variables of unknown names and values.
+which avoids defining lots of functions of unknown names.
 
 =head2 Functions/Methods
 
@@ -175,7 +178,7 @@ The first example imports all Excel constants names into the main namespace
 and prints the value of xlMarkerStyleDot (-4118).
 
     use Win32::OLE::Const ('Microsoft Excel 8.0 Object Library');
-    print "xlMarkerStyleDot = $xlMarkerStyleDot\n";
+    print "xlMarkerStyleDot = %d\n", xlMarkerStyleDot;
 
 The second example returns all Word constants in a hash ref.
 
