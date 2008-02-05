@@ -7,8 +7,9 @@ are by Jan Dubois unless attributed otherwise.
 	- Additional Variant overloads: Add, Sub, Mul, Div
 	- some additional variant conversion error checking
 	- VT_DECIMAL support
+	- support $obj = CreateObject Win32::OLE 'My.App';
 
-0.1008	(unreleased)
+0.1008	ActivePerl 517
 	- new LetProperty() method
 	- new COINIT_NO_INITIALIZE mode
 	- new HRESULT() function

@@ -61,6 +61,11 @@ sub CreateObject {
 	goto &AUTOLOAD;
     }
 
+    # Hack to allow C<$obj = CreateObject Win32::OLE 'My.App';>. Although this
+    # is contrary to the Gecko, we just make it work since it doesn't hurt.
+    return Win32::OLE->new($_[1]) if $_[0] eq 'Win32::OLE';
+
+    # Gecko form: C<$success = Win32::OLE::CreateObject('My.App',$obj);>
     $_[1] = Win32::OLE->new($_[0]);
     return defined $_[1];
 }
@@ -113,21 +118,18 @@ sub Option {
 
 sub Invoke {
     my ($self,$method,@args) = @_;
-    my $retval;
-    $self->Dispatch($method, $retval, @args);
+    $self->Dispatch($method, my $retval, @args);
     return $retval;
 }
 
 sub LetProperty {
     my ($self,$method,@args) = @_;
-    my $retval;
-    $self->Dispatch([DISPATCH_PROPERTYPUT, $method], $retval, @args);
+    $self->Dispatch([DISPATCH_PROPERTYPUT, $method], my $retval, @args);
     return $retval;
 }
 
 sub SetProperty {
     my ($self,$method,@args) = @_;
-    my $retval;
     my $wFlags = DISPATCH_PROPERTYPUT;
     if (@args) {
 	# If the value is an object then it will be set by reference!
@@ -141,17 +143,16 @@ sub SetProperty {
 	    $wFlags = DISPATCH_PROPERTYPUTREF if $type == 9 || $type == 13;
 	}
     }
-    $self->Dispatch([$wFlags, $method], $retval, @args);
+    $self->Dispatch([$wFlags, $method], my $retval, @args);
     return $retval;
 }
 
 sub AUTOLOAD {
     my $self = shift;
-    my $retval;
     $AUTOLOAD =~ s/.*:://o;
     _croak("Cannot autoload class method \"$AUTOLOAD\"") 
       unless ref($self) && UNIVERSAL::isa($self, 'Win32::OLE');
-    my $success = $self->Dispatch($AUTOLOAD, $retval, @_);
+    my $success = $self->Dispatch($AUTOLOAD, my $retval, @_);
     unless (defined $success || $Strict) {
 	# Retry default method if C<no strict 'subs';>
 	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);

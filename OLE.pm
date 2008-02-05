@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1009';
+$VERSION = '0.1010';
 
 use Carp;
 use Exporter;
@@ -147,8 +147,13 @@ new() or GetActiveObject().
 =item Win32::OLE->Initialize([COINIT])
 
 The Initialize() class method can be used to specify an alternative
-apartment model for the Perl thread. It must be called before the
-first object is created. Valid values for COINIT are:
+apartment model for the Perl thread. It must be called B<before> the
+first OLE object is created. If the C<Win32::OLE::Const> module is
+used then the call to the Initialize() method must be made from a BEGIN
+block before the first C<use> statement for the C<Win32::OLE::Const>
+module.
+
+Valid values for COINIT are:
 
   Win32::OLE::COINIT_APARTMENTTHREADED  - single threaded
   Win32::OLE::COINIT_MULTITHREADED      - the default
