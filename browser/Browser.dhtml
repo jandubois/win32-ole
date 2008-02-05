@@ -173,6 +173,7 @@ my $html = <<HTML;
 	    <TD><INPUT TYPE="checkbox" $GroupByType
 		 onclick="parent.Libraries.GroupByType"></TD></TR>
     </TABLE>
+    <HR><FONT SIZE=-2>Written by Jan Dubois in 1999.</FONT>
 HTML
 
 $frame{Header}->document->body->{innerHTML} = $html;

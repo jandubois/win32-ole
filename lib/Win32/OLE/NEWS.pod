@@ -29,6 +29,72 @@ Label> construct:
   CheckError:
     # ... your error handling code here ...
 
+=head2 Builtin event loop
+
+Processing OLE events required a polling loop before, e.g.
+
+    my $Quit;
+    #...
+    until ($Quit) {
+        Win32::OLE->SpinMessageLoop;
+        Win32::Sleep(100);
+    }
+    package BrowserEvents;
+    sub OnQuit { $Quit = 1 }
+
+This is inefficient and a bit odd.  This version of Win32::OLE now
+supports a standard messageloop:
+
+    Win32::OLE->MessageLoop();
+
+    package BrowserEvents;
+    sub OnQuit { Win32::OLE->QuitMessageLoop }
+
+=head2 Free unused OLE libraries
+
+Previous versions of Win32::OLE would call the CoFreeUnusedLibraries()
+API whenever an OLE object was destroyed.  This made sure that OLE
+libraries would be unloaded as soon as they were no longer needed.
+Unfortunately, objects implemented in Visual Basic tend to crash
+during this call, as they pretend to be ready for unloading, when in
+fact, they aren't.
+
+The unloading of object libraries is really only important for long
+running processes that might instantiate a huge number of B<different>
+objects over time.  Therefore this API is no longer called
+automatically.  The functionality is now available explicitly to those
+who want or need it by calling a Win32::OLE class method:
+
+    Win32::OLE->FreeUnusedLibraries();
+
+=head2 The "Win32::OLE" article from "The Perl Journal #10"
+
+The article is Copyright 1998 by I<The Perl
+Journal>. http://www.tpj.com
+
+It originally appeared in I<The Perl Journal> # 10 and appears here
+courtesy of Jon Orwant and I<The Perl Journal>.  The sample code from
+the article is in the F<eg/tpj.pl> file.
+
+=head2 VARIANT->Put() bug fixes
+
+The Put() method didn't work correctly for arrays of type VT_BSTR,
+VT_DISPATH or VT_UNKNOWN.  This has been fixed.
+
+=head2 Error message fixes
+
+Previous versions of Win32::OLE gave a wrong argument index for some
+OLE error messages (the number was too large by 1).  This should be
+fixed now.
+
+=head2 VT_DATE and VT_ERROR return values handled differently
+
+Method calls and property accesses returning a VT_DATE or VT_ERROR
+value would previously translate the value to string or integer
+format.  This has been changed to return a Win32::OLE::Variant
+object. The return values will behave as before when being used as
+strings or numbers due to the overloaded behavior of the Variant objects.
+
 
 =head1 Version 0.11 (changes since 0.1008)
 

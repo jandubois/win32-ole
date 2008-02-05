@@ -25,7 +25,7 @@
  *
  */
 
-#define _DEBUG
+// #define _DEBUG
 
 #define MY_VERSION "Win32::OLE(" XS_VERSION ")"
 

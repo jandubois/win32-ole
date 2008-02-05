@@ -3,7 +3,7 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
-0.1102	(unreleased)
+0.12	Thu, April 13th, 2000
 	- remove call to CoFreeUnusedLibraries from ReleasePerlObject
 	- added Win32::OLE->FreeUnusedLibraries() class method
 	- fix Variant->Put() support for SAFEARRAYs of BSTR/DISPATCH/UNKNOWN

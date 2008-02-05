@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.1102';
+$VERSION = '0.12';
 
 use Carp;
 use Exporter;
@@ -126,6 +126,21 @@ The EnumAllObjects() method is primarily a debugging tool.  It can be
 used e.g. in an END block to check if all external connections have
 been properly destroyed.
 
+=item Win32::OLE->FreeUnusedLibraries()
+
+The FreeUnusedLibraries() class method unloads all unused OLE
+resources.  These are the libraries of those classes of which all
+existing objects have been destroyed.  The unloading of object
+libraries is really only important for long running processes that
+might instantiate a huge number of B<different> objects over time.
+
+Be aware that objects implemented in Visual Basic have a buggy
+implementation of this functionality: They pretend to be unloadable
+while they are actually still running their cleanup code.  Unloading
+the DLL at that moment typically produces an access violation.  The
+probability for this problem can be reduced by calling the
+SpinMessageLoop() method and sleep()ing for a few seconds.
+
 =item Win32::OLE->GetActiveObject(CLASS[, DESTRUCTOR])
 
 The GetActiveObject() class method returns an OLE reference to a
@@ -223,6 +238,12 @@ you have to use the LetProperty() object method in Perl:
 LetProperty() also supports optional arguments for the property assignment.
 See L<OBJECT->SetProperty(NAME,ARGS,VALUE)> for details.
 
+=item Win32::OLE->MessageLoop()
+
+The MessageLoop() class method will run a standard Windows message
+loop, dispatching messages until the QuitMessageLoop() class method is
+called.  It is used to wait for OLE events.
+
 =item Win32::OLE->Option(OPTION)
 
 The Option() class method can be used to inspect and modify
@@ -241,6 +262,13 @@ The QueryObjectType() class method returns a list of the type library
 name and the objects class name.  In a scalar context it returns the
 class name only.  It returns C<undef> when the type information is not
 available.
+
+=item Win32::OLE->QuitMessageLoop()
+
+The QuitMessageLoop() class method posts a (user-level) "Quit" message
+to the current threads message loop.  QuitMessageLoop() is typically
+called from an event handler.  The MessageLoop() class method will
+return when it receives this "Quit" method.
 
 =item OBJECT->SetProperty(NAME,ARGS,VALUE)
 
@@ -867,7 +895,7 @@ related questions only, of course).
     Developed by ActiveWare Internet Corp., now known as
     ActiveState Tool Corp., http://www.ActiveState.com
 
-    Other modifications Copyright (c) 1997-1999 by Gurusamy Sarathy
+    Other modifications Copyright (c) 1997-2000 by Gurusamy Sarathy
     <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
 
     You may distribute under the terms of either the GNU General Public
@@ -875,6 +903,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.1102	  24 September 1999
+Version 0.12	  13 April 2000
 
 =cut

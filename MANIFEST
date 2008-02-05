@@ -35,6 +35,7 @@ browser/Type.png
 
 eg/constants.pl		Sample script prints all Excel defined constants
 eg/properties.pl	Sample script prints all Excel application properties
+eg/tpj.pl		Sample code from the Win32::OLE article in TPJ #10
 eg/typelibs.pl		Sample script prints all registered typelib names
 eg/word2pod.pl		Prototype of a Word -> POD translator
 eg/word2xxx.pl		Sample file type converter

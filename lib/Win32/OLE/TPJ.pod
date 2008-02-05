@@ -699,7 +699,7 @@ to Perl values happens as follows:
 
   Variant                Perl value
   VT_BOOL, VT_ERROR      Integer
-  VT_UT1, VT_U2, VT_U4   Integer
+  VT_UI1, VT_I2, VT_I4   Integer
   VT_R4, VT_R8           Float value
   VT_BSTR                String
   VT_DISPATCH            Win32::OLE object
