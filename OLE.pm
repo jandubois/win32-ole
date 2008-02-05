@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0903';
+$VERSION = '0.0904';
 
 use Carp;
 use Exporter;
@@ -806,7 +806,8 @@ added support for named parameters, and other significant enhancements.
 =head1 COPYRIGHT
 
     (c) 1995 Microsoft Corporation. All rights reserved. 
-	Developed by ActiveWare Internet Corp., http://www.ActiveWare.com
+    Developed by ActiveWare Internet Corp., now known as
+    ActiveState Tool Corp., http://www.ActiveState.com
 
     Other modifications Copyright (c) 1997, 1998 by Gurusamy Sarathy
     <gsar@umich.edu> and Jan Dubois <jan.dubois@ibm.net>
@@ -816,6 +817,6 @@ added support for named parameters, and other significant enhancements.
 
 =head1 VERSION
 
-Version 0.0903	9 September 1998
+Version 0.0904	19 September 1998
 
 =cut
