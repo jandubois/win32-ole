@@ -1,5 +1,15 @@
 Revision history for Perl extension Win32::OLE.
 
+0.0613
+	- WinOleEnum objects where never Safefree()d before
+	- New Initialize/Uninitialize class methods. Uninitialize zombifies all
+	  OLE objects an calls OleUninitialize.
+
+0.0612
+	- new Win32::OLE->SpinMessageLoop() class method
+	- Messageloop will be emptied before OleUnitialize is called
+	  (thanks to Steve Glassman for finding this problem!)
+
 0.0611
 	- Win32::OLE::Tie::Store use DISPATCH_PROPERTYPUTREF for objects
 	  (as suggested by Steve Biondi)
