@@ -21,18 +21,6 @@
  *
  */
 
-/* ToDo list:
-   Documentation!
-   Test suite!
-
-   BYREF variants
-   SAFEARRAY creation/access methods for Variants
-   Unicode access
-
-   Check for memory leaks once more :-)
- */
-
-
 #include <math.h>	/* this hack gets around VC-5.0 brainmelt */
 #include <windows.h>
 
@@ -1359,14 +1347,14 @@ Dispatch(self,method,retval,...)
     SV *retval
 PPCODE:
 {
-    char *buffer;
+    char *buffer = "";
     char *ptr;
     unsigned int length, argErr;
-    int index, arrayIndex, baseIndex;
+    int index, arrayIndex;
     I32 len;
     WINOLEOBJECT *pObj;
     EXCEPINFO excepinfo;
-    DISPID dispID;
+    DISPID dispID = DISPID_VALUE;
     VARIANT result;
     DISPPARAMS dispParams;
     SV *curitem, *sv;
@@ -1391,20 +1379,25 @@ PPCODE:
     LCID lcid = QueryPkgVar(pObj->stash, LCID_NAME, LCID_LEN, lcidDefault);
     UINT cp = QueryPkgVar(pObj->stash, CP_NAME, CP_LEN, cpDefault);
 
-    baseIndex = 0;
-    buffer = SvPV(method, length);
-    DBG(("Dispatch \"%s\"\n", buffer));
-    if (FAILED(GetHashedDispID(pObj, buffer, length, dispID, lcid, cp))) {
-	/* if the name was not found then try it as a parameter */
-	/* to the default dispID */
-	baseIndex = 1;
-	dispID = DISPID_VALUE;
+    if (SvPOK(method)) {
+	buffer = SvPV(method, length);
+	if (length > 0) {
+	    res = GetHashedDispID(pObj, buffer, length, dispID, lcid, cp);
+	    if (FAILED(res)) {
+		err = sv_2mortal(newSVpvf(" in GetIDsOfNames \"%s\"", buffer));
+		ReportOleError(pObj->stash, res, NULL, err);
+		ST(0) = &sv_undef;
+		XSRETURN(1);
+	    }
+	}
     }
+
+    DBG(("Dispatch \"%s\"\n", buffer));
 
     dispParams.rgvarg = NULL;
     dispParams.rgdispidNamedArgs = NULL;
     dispParams.cNamedArgs = 0;
-    dispParams.cArgs = items - 3 + baseIndex;
+    dispParams.cArgs = items - 3;
 
     Zero(&excepinfo, 1, EXCEPINFO);
     VariantInit(&result);
@@ -1487,19 +1480,9 @@ PPCODE:
 		VariantInit(&dispParams.rgvarg[index]);
 	}
 
-	for(index = dispParams.cNamedArgs;
-	    index < dispParams.cArgs - baseIndex;
-	    ++index)
-	{
+	for(index = dispParams.cNamedArgs; index < dispParams.cArgs; ++index) {
 	    res = SetVariantFromSV(ST(items-1-(index-dispParams.cNamedArgs)),
 				   &dispParams.rgvarg[index], cp);
-	    if (FAILED(res))
-		goto Cleanup;
-	}
-
-	if (baseIndex != 0) {
-	    res = SetVariantFromSV(ST(1),
-				   &dispParams.rgvarg[dispParams.cArgs-1], cp);
 	    if (FAILED(res))
 		goto Cleanup;
 	}
@@ -2419,6 +2402,68 @@ PPCODE:
 	if (!CheckOleError(stash, res, NULL, NULL)) {
 	    ST(0) = sv_newmortal();
 	    SetSVFromVariant(&variant, ST(0), SvSTASH(SvRV(self)));
+	}
+    }
+    XSRETURN(1);
+}
+
+void
+ChangeType(self,type)
+    SV *self
+    IV type
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+    HRESULT res = E_INVALIDARG;
+
+    if (pVarObj != NULL) {
+	HV *stash = GetStash(self);
+	LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+
+	res = VariantChangeTypeEx(&pVarObj->variant, &pVarObj->variant, 
+				  lcid, 0, type);
+	CheckOleError(stash, res, NULL, NULL);
+    }
+
+    if (FAILED(res))
+	ST(0) = &sv_undef;
+
+    XSRETURN(1);
+}
+
+void
+Unicode(self)
+    SV *self
+PPCODE:
+{
+    WINOLEVARIANTOBJECT *pVarObj = GetOleVariantObject(self);
+
+    ST(0) = &sv_undef;
+    if (pVarObj != NULL) {
+	HV *stash = GetStash(self);
+	VARIANT Variant;
+	VARIANT *pVariant = &pVarObj->variant;
+	HRESULT res = S_OK;
+
+	if ((V_VT(pVariant) & ~VT_BYREF) != VT_BSTR) {
+	    LCID lcid = QueryPkgVar(stash, LCID_NAME, LCID_LEN, lcidDefault);
+
+	    VariantInit(&Variant);
+	    res = VariantChangeTypeEx(&Variant, pVariant, lcid, 0, VT_BSTR);
+	    pVariant = &Variant;
+	}
+
+	if (!CheckOleError(stash, res, NULL, NULL)) {
+	    BSTR bstr = V_ISBYREF(pVariant) ? *V_BSTRREF(pVariant) 
+		                            : V_BSTR(pVariant);
+	    STRLEN len = SysStringLen(bstr);
+	    SV *sv = newSVpv((char*)bstr, 2*len);
+	    U16 *pus = (U16 *)SvPV(sv, na);
+	    for (STRLEN i=0 ; i < len ; ++i)
+		pus[i] = htons(pus[i]);
+
+	    ST(0) = sv_2mortal(sv_bless(newRV_noinc(sv), 
+					gv_stashpv("Unicode::String", TRUE)));
 	}
     }
     XSRETURN(1);

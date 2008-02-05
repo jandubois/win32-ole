@@ -1,20 +1,23 @@
 Revision history for Perl extension Win32::OLE.
 
-0.0602
+0.0603
 	- Win32::OLE::Enum::Count method removed
 	- SetSVFromVariant now works with SAFEARRAYs of non-VARIANT types too
-	- Onedimensional ARRAY of UI1s converted to SvPV
+	- Onedimensional SAFEARRAY of UI1s converted to SvPV
 	- OLE, Enum and Variant objects all linked in g_pObj chain
-	- g_pObj protected by critical section to make it thread safe
-	- New package variables CP, LCID for Win32::OLE and Win32::OLE::Variant
+	- g_pObj chain protected by critical section to make it thread safe
+	- New package variables $CP,$LCID for Win32::OLE and Win32::OLE::Variant
 	- default lcid changed from LOCALE_SYSTEM_DEFAULT -> language neutral
-	- LastOleError is stored in a package variable now
+	- LastOleError is stored in a package variable $LastError now
 	- Error reporting now controled by $Warn package variable
+	- Win32::OLE::Variant: new As,ChangeType,Type,Unicode,Value methods
 	- Win32::OLE::Variant overloaded "" and 0+ operations
+	- Preliminary Variant BYREF support
 	- Dispatch can return Win32::OLE::Variant objects too
 	- Compatibility package "OLE" created
+	- Invoke method added, supports default method too
+	- Memory leaks
 
-0.0601
 	- "keys %$object", QueryObjectType and Win32::OLE::Const::Load no
 	  longer croak when the GetTypeInfo is unavailable or returns 0
 	- Enum::new returns undef if object is not a valid collection object

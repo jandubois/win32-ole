@@ -133,6 +133,8 @@ sub TKIND_MAX {8;}
 # following subs are pure XS code:
 # - new(type,data)
 # - As(type)
+# - ChangeType(type)
+# - Unicode
 
 use overload '""'     => sub {$_[0]->As(VT_BSTR)},
              '0+'     => sub {$_[0]->As(VT_R8)},
@@ -165,23 +167,67 @@ argument type called VARIANT. This is basically an object containing
 a data type and the actual data value. The data type is specified by
 the VT_xxx constants.
 
-=head2 Functions/Methods
+=head2 Methods
 
 =over 8
 
-=item Win32::OLE::Variant->new(TYPENAME, DATA)
+=item new(TYPE, DATA)
 
 This method returns a Win32::OLE::Variant object of the specified
 type that contains the given data.  The Win32::OLE::Variant object
 can be used to specify data types other than IV, NV or PV (which are
 supported transparently).  See L<Variants> below for details.
 
-=item Variant(TYPENAME, DATA)
+=item As(TYPE)
+
+C<As> converts the VARIANT to the new type before converting to a
+Perl value. This take the current LCID setting into account. For
+example a string might contain a ',' as the decimal point character.
+Using C<$variant->As(VT_R8) will correctly return the floating
+point value.
+
+The underlying variant object is NOT changed by this method.
+
+=item ChangeType(TYPE)
+
+This method changes the type of the contained VARIANT in place. It
+returns the object itself, not the converted value.
+
+=item Type()
+
+The C<Type> method returns the type of the contained VARIANT.
+
+=item Unicode()
+
+The C<Unicode> method returns a C<Unicode::String> object. This contains
+the BSTR value of the variant in network byte order. If the variant is
+not currently in VT_BSTR format then a VT_BSTR copy will be produced first.
+
+=item Value()
+
+The C<Value> method returns the value of the VARIANT as a Perl value. The
+conversion is performed in the same manner as all return values of
+Win32::OLE method calls are converted.
+
+=back
+
+=head2 Functions
+
+=over 8
+
+=item Variant(TYPE, DATA)
 
 This is just a function alias of the Win32::OLE::Variant->new()
 method. This function is exported by default.
 
 =back
+
+=head2 Overloading
+
+The Win32::OLE::Variant package has overloaded the conversion to
+string an number formats. Therefore variant objects can be used in
+arithmetic and string operations without applying the C<Value> 
+method first.
 
 =head2 Constants
 

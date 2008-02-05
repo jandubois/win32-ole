@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK $AUTOLOAD
 	    $CP $LCID $Warn $LastError);
 
-$VERSION = '0.0602';
+$VERSION = '0.0603';
 
 $Warn = $^W;
 
@@ -40,25 +40,28 @@ sub CP_OEMCP {1;}  # OEM codepage
 # - DESTROY()
 #
 
-sub CreateObject {
-    if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
-	$AUTOLOAD = 'CreateObject';
-	goto &AUTOLOAD;
-    }
-    # $Success = Win32::OLE->CreateObject($Class,$Object);
-    $_[1] = Win32::OLE->new($_[0]);
-    return defined $_[1];
-}
-
 sub LastError {
+    unless (defined $_[0]) {
+	Carp::carp "LastError must be called as class method!";
+	return;
+    }
+
     if (ref($_[0]) && UNIVERSAL::isa($_[0],'Win32::OLE')) {
 	$AUTOLOAD = 'LastError';
 	goto &AUTOLOAD;
     }
+
     no strict 'refs';
     my $LastError = "$_[0]::LastError";
     $$LastError = $_[1] if defined $_[1];
     return $$LastError;
+}
+
+sub Invoke {
+    my ($self, $method, @args) = @_;
+    my $retval;
+    $self->Dispatch($method, $retval, @args);
+    return $retval;
 }
 
 sub AUTOLOAD {

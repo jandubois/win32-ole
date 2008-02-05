@@ -10,15 +10,34 @@
 ########################################################################
 
 package OLE::Variant;
+use Win32::OLE qw(CP_ACP);
 use Win32::OLE::Variant;
+
 use strict;
 use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
 @ISA = qw(Win32::OLE::Variant);
 
+$Warn = 0;
+$LCID = 2 << 10;
+$CP = CP_ACP;
+
+sub new {
+    my $self = shift;
+    my $variant = $self->SUPER::new(@_);
+    $OLE::LastError = $LastError unless defined $variant;
+    return $variant;
+}
+
+########################################################################
+
+package Win32;
+
+sub OLELastError {return OLE->LastError()}
+
 ########################################################################
 
 package OLE;
-use Win32::OLE;
+use Win32::OLE qw(CP_ACP);
 
 use strict;
 use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
@@ -26,7 +45,7 @@ use vars qw($AUTOLOAD @ISA $LCID $CP $Warn $LastError);
 
 $Warn = 0;
 $LCID = 2 << 10;
-# $CP = ?;
+$CP = CP_ACP;
 
 sub new {
     my $class = shift;
@@ -40,16 +59,23 @@ sub copy {
     return OLE->SUPER::GetActiveObject($class);
 }
 
-*CreateObject = \&new;
-*GetObject = \&copy;
-
 sub AUTOLOAD {
     my $self = shift;
     my $retval;
     $AUTOLOAD =~ s/.*:://o;
-    return $retval if $self->SUPER::Dispatch($AUTOLOAD, $retval, @_);
-    return;
+
+    Carp::croak("Cannot autoload class method \"$AUTOLOAD\"") 
+      unless ref($self) && UNIVERSAL::isa($self,'OLE');
+
+    unless (defined $self->Dispatch($AUTOLOAD, $retval, @_)) {
+	# Retry unnamed default method
+	$self->Dispatch(undef, $retval, $AUTOLOAD, @_);
+    }
+    return $retval;
 }
+
+*CreateObject = \&new;
+*GetObject = \&copy;
 
 # Automation data types.
 
@@ -92,22 +118,6 @@ sub VT_STORED_OBJECT {69;}
 sub VT_BLOB_OBJECT {70;}
 sub VT_CF {71;}
 sub VT_CLSID {72;}
-
-
-# Current support types are
-#   VT_UI1,
-#   VT_I2,
-#   VT_I4,
-#   VT_R4,
-#   VT_R8,
-#   VT_DATE,
-#   VT_BSTR,
-#   VT_CY,
-#   VT_BOOL,
-
-
-
-# Typelib
 
 sub TKIND_ENUM {0;}
 sub TKIND_RECORD {1;}
