@@ -2306,10 +2306,12 @@ ClearVariantObject(WINOLEVARIANTOBJECT *pVarObj)
             SysFreeString(*V_BSTRREF(pVariant));
             break;
         case VT_DISPATCH:
-            (*V_DISPATCHREF(pVariant))->Release();
+            if (*V_DISPATCHREF(pVariant))
+                (*V_DISPATCHREF(pVariant))->Release();
             break;
         case VT_UNKNOWN:
-            (*V_UNKNOWNREF(pVariant))->Release();
+            if (*V_UNKNOWNREF(pVariant))
+                (*V_UNKNOWNREF(pVariant))->Release();
             break;
         }
         VariantInit(pVariant);
