@@ -12,7 +12,7 @@ use strict;
 use Win32::OLE;
 
 use strict qw(vars);
-use vars qw($AUTOLOAD @ISA $Warn $LastError $CP $LCID $Tie);
+use vars qw($AUTOLOAD @ISA $Warn $LastError $CP $LCID $Tie $Variant);
 # use BEGIN because the class is already used in BEGIN block later
 BEGIN {
     @ISA = qw(Win32::OLE);
@@ -104,8 +104,14 @@ use Win32::OLE::Const ('Microsoft Excel');
 $Test = 0;
 print "1..$TestCount\n";
 my $File = cwd . "\\test.xls";
-$File =~ s#\\#/#g, chomp($File = `cygpath -w '$File'`) if $^O eq 'cygwin';
+if ($^O eq 'cygwin') {
+    $File =~ s#\\#/#g;
+    chomp($File = `cygpath -w '$File'`);
+}
+# Excel 2007 doesn't handle forward slashes anymore...
+$File =~ s#/#\\#g;
 unlink $File if -f $File;
+print "# File is '$File'\n";
 
 printf "# Excel is %s\n", $Excel;
 my $Type = Win32::OLE->QueryObjectType($Excel);
