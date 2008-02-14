@@ -3542,7 +3542,21 @@ PPCODE:
 	if (SUCCEEDED(hr)) {
 	    hr = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
 				  IID_IDispatch, (void**)&pDispatch);
-	}
+            /* The tlbinf32.dll from Microsoft fails this call.
+             * It however supports instantiating an IUnknown interface
+             * and then querying that one for IDispatch...
+             */
+            if (FAILED(hr)) {
+                IUnknown *punk;
+                hr = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
+                                      IID_IUnknown, (void**)&punk);
+                if (SUCCEEDED(hr)) {
+                    hr = punk->QueryInterface(IID_IDispatch, (void**)&pDispatch);
+                    punk->Release();
+                }
+            }
+        }
+
 	if (!CheckOleError(aTHX_ stash, hr)) {
 	    ST(0) = CreatePerlObject(aTHX_ stash, pDispatch, destroy);
 	    DBG(("Win32::OLE::new |%lx| |%lx|\n", ST(0), pDispatch));

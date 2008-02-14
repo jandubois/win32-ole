@@ -3,6 +3,9 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1707  unreleased, August 7th 2006
+	- add special support for tlbinf32.dll from Microsoft
+
 0.1706	unreleased, June 8th 2006
 	- add support for receiving VT_RECORD and arrays of VT_RECORD
 	- improve error handling logic
