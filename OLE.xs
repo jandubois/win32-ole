@@ -3546,7 +3546,7 @@ PPCODE:
              * It however supports instantiating an IUnknown interface
              * and then querying that one for IDispatch...
              */
-            if (FAILED(hr)) {
+            if (hr == E_NOINTERFACE) {
                 IUnknown *punk;
                 hr = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
                                       IID_IUnknown, (void**)&punk);
