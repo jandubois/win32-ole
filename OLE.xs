@@ -1475,7 +1475,7 @@ NextPropertyName(pTHX_ WINOLEOBJECT *pObj)
     BSTR bstr;
 
     if (!pObj->pTypeInfo)
-	return &PL_sv_undef;
+	return NULL;
 
     HV *stash = SvSTASH(pObj->self);
     UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
@@ -1541,7 +1541,7 @@ NextPropertyName(pTHX_ WINOLEOBJECT *pObj)
 	    return sv;
 	}
     }
-    return &PL_sv_undef;
+    return NULL;
 
 }   /* NextPropertyName */
 
@@ -1904,20 +1904,19 @@ CreateEnumVARIANT(pTHX_ WINOLEOBJECT *pObj)
 SV *
 NextEnumElement(pTHX_ IEnumVARIANT *pEnum, HV *stash)
 {
-    HRESULT hr = S_OK;
-    SV *sv = &PL_sv_undef;
+    SV *sv = NULL;
     VARIANT variant;
 
     VariantInit(&variant);
-    if (SUCCEEDED(pEnum->Next(1, &variant, NULL))) {
+    if (pEnum->Next(1, &variant, NULL) == S_OK) {
 	sv = newSV(0);
-	hr = SetSVFromVariantEx(aTHX_ &variant, sv, stash);
-    }
-    VariantClear(&variant);
-    if (FAILED(hr)) {
-        SvREFCNT_dec(sv);
-	sv = &PL_sv_undef;
-	ReportOleError(aTHX_ stash, hr);
+	HRESULT hr = SetSVFromVariantEx(aTHX_ &variant, sv, stash);
+        if (FAILED(hr)) {
+            SvREFCNT_dec(sv);
+            sv = NULL;
+            ReportOleError(aTHX_ stash, hr);
+        }
+        VariantClear(&variant);
     }
     return sv;
 
@@ -4594,12 +4593,13 @@ PPCODE:
     HV *stash = SvSTASH(pObj->self);
     SetLastOleError(aTHX_ stash);
 
+    SV *sv = NULL;
     switch (ix) {
     case 0: /* FIRSTKEY */
 	FetchTypeInfo(aTHX_ pObj);
 	pObj->PropIndex = 0;
     case 1: /* NEXTKEY */
-	ST(0) = NextPropertyName(aTHX_ pObj);
+	sv = NextPropertyName(aTHX_ pObj);
 	break;
 
     case 2: /* FIRSTENUM */
@@ -4607,17 +4607,20 @@ PPCODE:
 	    pObj->pEnum->Release();
 	pObj->pEnum = CreateEnumVARIANT(aTHX_ pObj);
     case 3: /* NEXTENUM */
-	ST(0) = NextEnumElement(aTHX_ pObj->pEnum, stash);
-	if (!SvOK(ST(0))) {
+	sv = NextEnumElement(aTHX_ pObj->pEnum, stash);
+	if (!sv) {
 	    pObj->pEnum->Release();
 	    pObj->pEnum = NULL;
 	}
 	break;
     }
 
-    if (!SvIMMORTAL(ST(0)))
-	sv_2mortal(ST(0));
+    if (!sv)
+        sv = &PL_sv_undef;
+    else if (!SvIMMORTAL(sv))
+	sv_2mortal(sv);
 
+    ST(0) = sv;
     XSRETURN(1);
 }
 
@@ -4719,45 +4722,49 @@ PPCODE:
 	    continue;
 	}
 
-	for (int iVar=0; iVar < pTypeAttr->cVars; ++iVar) {
-	    VARDESC *pVarDesc;
+        if (!(pTypeAttr->wTypeFlags & (TYPEFLAG_FHIDDEN |
+                                       TYPEFLAG_FRESTRICTED)))
+        {
+            for (int iVar=0; iVar < pTypeAttr->cVars; ++iVar) {
+                VARDESC *pVarDesc;
 
-	    hr = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
-	    /* XXX LEAK alert */
-	    if (CheckOleError(aTHX_ stash, hr))
-	        continue;
+                hr = pTypeInfo->GetVarDesc(iVar, &pVarDesc);
+                /* XXX LEAK alert */
+                if (CheckOleError(aTHX_ stash, hr))
+                    continue;
 
-	    if (pVarDesc->varkind == VAR_CONST &&
-		!(pVarDesc->wVarFlags & (VARFLAG_FHIDDEN |
-					 VARFLAG_FRESTRICTED |
-					 VARFLAG_FNONBROWSABLE)))
-	    {
-		unsigned int cName;
-		BSTR bstr;
-		char szName[64];
+                if (pVarDesc->varkind == VAR_CONST &&
+                    !(pVarDesc->wVarFlags & (VARFLAG_FHIDDEN |
+                                             VARFLAG_FRESTRICTED |
+                                             VARFLAG_FNONBROWSABLE)))
+                {
+                    unsigned int cName;
+                    BSTR bstr;
+                    char szName[64];
 
-		hr = pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
-		if (CheckOleError(aTHX_ stash, hr) || cName == 0 || !bstr)
-		    continue;
+                    hr = pTypeInfo->GetNames(pVarDesc->memid, &bstr, 1, &cName);
+                    if (CheckOleError(aTHX_ stash, hr) || cName == 0 || !bstr)
+                        continue;
 
-		char *pszName = GetMultiByte(aTHX_ bstr,
-					     szName, sizeof(szName), cp);
-		SV *sv = newSV(0);
-		/* XXX LEAK alert */
-		hr = SetSVFromVariantEx(aTHX_ pVarDesc->lpvarValue, sv, stash);
-		if (!CheckOleError(aTHX_ stash, hr)) {
-		    if (SvOK(caller)) {
-			/* XXX check for valid symbol name */
-			newCONSTSUB(hv, pszName, sv);
-		    }
-		    else
-		        hv_store(hv, pszName, strlen(pszName), sv, 0);
-		}
-		SysFreeString(bstr);
-		ReleaseBuffer(aTHX_ pszName, szName);
-	    }
-	    pTypeInfo->ReleaseVarDesc(pVarDesc);
-	}
+                    char *pszName = GetMultiByte(aTHX_ bstr, szName, sizeof(szName), cp);
+                    SV *sv = newSV(0);
+                    /* XXX LEAK alert */
+                    hr = SetSVFromVariantEx(aTHX_ pVarDesc->lpvarValue,
+                                            sv, stash);
+                    if (!CheckOleError(aTHX_ stash, hr)) {
+                        if (SvOK(caller)) {
+                            /* XXX check for valid symbol name */
+                            newCONSTSUB(hv, pszName, sv);
+                        }
+                        else
+                            hv_store(hv, pszName, strlen(pszName), sv, 0);
+                    }
+                    SysFreeString(bstr);
+                    ReleaseBuffer(aTHX_ pszName, szName);
+                }
+                pTypeInfo->ReleaseVarDesc(pVarDesc);
+            }
+        }
 
 	pTypeInfo->ReleaseTypeAttr(pTypeAttr);
 	pTypeInfo->Release();
@@ -4766,17 +4773,17 @@ PPCODE:
 }
 
 void
-_Typelibs(self)
+_Typelibs(self,typelib)
     SV *self
+    SV *typelib
 PPCODE:
 {
     HKEY hKeyTypelib;
     FILETIME ft;
-    LONG err = RegOpenKeyExA(HKEY_CLASSES_ROOT, "Typelib", 0, KEY_READ, &hKeyTypelib);
-    if (err != ERROR_SUCCESS) {
-	warn("Cannot access HKEY_CLASSES_ROOT\\Typelib");
-	XSRETURN_EMPTY;
-    }
+    LONG err = RegOpenKeyExA(HKEY_CLASSES_ROOT, SvPV_nolen(typelib),
+                             0, KEY_READ, &hKeyTypelib);
+    if (err != ERROR_SUCCESS)
+	XSRETURN_NO;
 
     EXTEND(SP, 5);
 
@@ -4864,7 +4871,7 @@ PPCODE:
 	RegCloseKey(hKeyClsid);
     }
     RegCloseKey(hKeyTypelib);
-    XSRETURN_EMPTY;
+    XSRETURN_YES;
 }
 
 void
@@ -4997,19 +5004,14 @@ PPCODE:
     HV *olestash = GetWin32OleStash(aTHX_ self);
     SetLastOleError(aTHX_ olestash);
 
-    SV *sv = NULL;
     while (ix == 0 || count-- > 0) {
-	sv = NextEnumElement(aTHX_ pEnumObj->pEnum, olestash);
-	if (!SvOK(sv))
+	SV *sv = NextEnumElement(aTHX_ pEnumObj->pEnum, olestash);
+	if (!sv)
 	    break;
 	if (!SvIMMORTAL(sv))
 	    sv_2mortal(sv);
-	if (GIMME_V == G_ARRAY)
-	    XPUSHs(sv);
+        XPUSHs(sv);
     }
-
-    if (GIMME_V == G_SCALAR && sv && SvOK(sv))
-	XPUSHs(sv);
 }
 
 void

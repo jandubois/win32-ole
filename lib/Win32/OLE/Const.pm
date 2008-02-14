@@ -17,7 +17,11 @@ sub _Typelib {
     return unless -f $filename || $filename !~ /^\w:\\.*\.(exe|dll)$/;
     push @$Typelibs, \@_;
 }
-__PACKAGE__->_Typelibs;
+unless (__PACKAGE__->_Typelibs("TypeLib")) {
+    warn("Cannot access HKEY_CLASSES_ROOT\\Typelib");
+}
+# Enumerate 32bit type libraries on Win64
+__PACKAGE__->_Typelibs("Wow6432Node\\TypeLib");
 
 sub import {
     my ($self,$name,$major,$minor,$language,$codepage) = @_;

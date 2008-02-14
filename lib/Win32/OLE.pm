@@ -6,7 +6,7 @@ use strict;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK @EXPORT_FAIL $AUTOLOAD
 	    $CP $LCID $Warn $LastError $_NewEnum $_Unique);
 
-$VERSION = '0.1704';
+$VERSION = '0.1705';
 
 use Carp;
 use Exporter;
@@ -955,7 +955,7 @@ related questions only, of course).
     Developed by ActiveWare Internet Corp., now known as
     ActiveState Tool Corp., http://www.ActiveState.com
 
-    Other modifications Copyright (c) 1997-2000 by Gurusamy Sarathy
+    Other modifications Copyright (c) 1997-2006 by Gurusamy Sarathy
     <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
 
     You may distribute under the terms of either the GNU General Public
@@ -963,6 +963,6 @@ related questions only, of course).
 
 =head1 VERSION
 
-Version 0.1704	  28 November 2005
+Version 0.1705	  28 March 2006
 
 =cut
