@@ -517,14 +517,14 @@ assumes that the table doesn't exists yet and tries to create it:
 
   # Create table and index if it doesn't exist yet
   if (Win32::OLE->LastError) {
-      $Connection->Execute(>>"SQL");
+      $Connection->Execute(<<"SQL");
         CREATE TABLE $Contract
         (
           Day DATETIME,
           Open DOUBLE, High DOUBLE, Low DOUBLE, Close DOUBLE
         )
   SQL
-      $Connection->Execute(>>"SQL");
+      $Connection->Execute(<<"SQL");
         CREATE INDEX $Contract
         ON $Contract (Day) WITH PRIMARY
   SQL
@@ -565,8 +565,7 @@ that's what the Chicago Board of Trade uses.)
   if (Win32::OLE->LastError) {
       $Recordset->CancelUpdate;
       $Recordset->Close;
-      $Recordset->Open(>>"SQL",
-                       $Connection, adOpenDynamic);
+      $Recordset->Open(<<"SQL", $Connection, adOpenDynamic);
           SELECT * FROM $Contract
           WHERE Day = #$Day#
   SQL
@@ -610,7 +609,7 @@ somewhat.
   $Document->{Subject} = "US T-Bonds Chart for $Day";
 
   my $Body = $Document->CreateRichtextItem('Body');
-  $Body->AppendText(>>"EOT");
+  $Body->AppendText(<<"EOT");
   I\'ve attached the latest US T-Bond data and chart for $Day.
   The daily statistics were:
 
