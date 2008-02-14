@@ -1,6 +1,8 @@
 use Config;
 use ExtUtils::MakeMaker qw(&WriteMakefile &neatvalue);
 
+my $INSTDIR = grep(/INSTALLDIRS=perl/i, @ARGV) ? "lib" : "site\\lib";
+
 my @MM =
 (
  'NAME'	        => 'Win32::OLE',

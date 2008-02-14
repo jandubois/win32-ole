@@ -2641,7 +2641,9 @@ AssignVariantFromSV(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	return hr;
     }
 
-    switch (vt & VT_TYPEMASK) {
+    VARTYPE vt_base = vt & VT_TYPEMASK;
+
+    switch (vt_base) {
     case VT_EMPTY:
     case VT_NULL:
 	break;
@@ -2679,7 +2681,6 @@ AssignVariantFromSV(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	    V_BSTR(&variant) = AllocOleStringFromSV(aTHX_ sv, cp);
 	}
 
-	VARTYPE vt_base = vt & ~VT_BYREF;
 	hr = VariantChangeTypeEx(&variant, &variant, lcid, 0, vt_base);
 	if (SUCCEEDED(hr)) {
 	    if (vt_base == VT_CY) {
@@ -2851,7 +2852,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	hr = VariantCopy(&pVarObj->variant, pVariant);
 	if (FAILED(hr)) {
 	    Safefree(pVarObj);
-	    ReportOleError(aTHX_ stash, hr);
+            return hr;
 	}
 
 	AddToObjectChain(aTHX_ (OBJECTHEADER*)pVarObj, WINOLEVARIANT_MAGIC);
@@ -2868,20 +2869,13 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
     }
 
     if (V_ISARRAY(pVariant)) {
+        VARTYPE vt_base = vt & VT_TYPEMASK;
 	SAFEARRAY *psa = V_ISBYREF(pVariant) ? *V_ARRAYREF(pVariant)
 	                                     : V_ARRAY(pVariant);
-	AV **pav;
-	IV index;
-	long *pArrayIndex, *pLowerBound, *pUpperBound;
-	VARIANT variant;
-
 	int dim = SafeArrayGetDim(psa);
 
-	VariantInit(&variant);
-	V_VT(&variant) = (vt & ~VT_ARRAY) | VT_BYREF;
-
 	/* convert 1-dim UI1 ARRAY to simple SvPV */
-	if (dim == 1 && (vt & VT_TYPEMASK) == VT_UI1) {
+	if (vt_base == VT_UI1 && dim == 1) {
 	    char *pStr;
 	    long lLower, lUpper;
 
@@ -2896,11 +2890,15 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	    return hr;
 	}
 
+	AV **pav;
+	long *pArrayIndex, *pLowerBound, *pUpperBound;
+
+	New(0, pav,         dim, AV*);
 	New(0, pArrayIndex, dim, long);
 	New(0, pLowerBound, dim, long);
 	New(0, pUpperBound, dim, long);
-	New(0, pav,         dim, AV*);
 
+	IV index;
 	for (index = 0; index < dim; ++index) {
 	    pav[index] = newAV();
 	    SafeArrayGetLBound(psa, index+1, &pLowerBound[index]);
@@ -2911,30 +2909,45 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
 	hr = SafeArrayLock(psa);
 	if (SUCCEEDED(hr)) {
-	    while (index >= 0) {
-		hr = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_BYREF(&variant));
-		if (FAILED(hr))
-		    break;
+            VARIANT variant;
+            VariantInit(&variant);
+            if (vt_base == VT_RECORD) {
+                hr = SafeArrayGetRecordInfo(psa, &V_RECORDINFO(&variant));
+                if (SUCCEEDED(hr))
+                    V_VT(&variant) = VT_RECORD;
+            }
+            else
+                V_VT(&variant) = vt_base | VT_BYREF;
 
-		SV *val = newSV(0);
-		hr = SetSVFromVariantEx(aTHX_ &variant, val, stash);
-		if (FAILED(hr)) {
-		    SvREFCNT_dec(val);
-		    break;
-		}
-		av_push(pav[dim-1], val);
+            if (SUCCEEDED(hr)) {
+                while (index >= 0) {
+                    if (vt_base == VT_RECORD)
+                        hr = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_RECORD(&variant));
+                    else
+                        hr = SafeArrayPtrOfIndex(psa, pArrayIndex, &V_BYREF(&variant));
+                    if (FAILED(hr))
+                        break;
 
-		for (index = dim-1; index >= 0; --index) {
-		    if (++pArrayIndex[index] <= pUpperBound[index])
-			break;
+                    SV *val = newSV(0);
+                    hr = SetSVFromVariantEx(aTHX_ &variant, val, stash);
+                    if (FAILED(hr)) {
+                        SvREFCNT_dec(val);
+                        break;
+                    }
+                    av_push(pav[dim-1], val);
 
-		    pArrayIndex[index] = pLowerBound[index];
-		    if (index > 0) {
-			av_push(pav[index-1], newRV_noinc((SV*)pav[index]));
-			pav[index] = newAV();
-		    }
-		}
-	    }
+                    for (index = dim-1; index >= 0; --index) {
+                        if (++pArrayIndex[index] <= pUpperBound[index])
+                            break;
+
+                        pArrayIndex[index] = pLowerBound[index];
+                        if (index > 0) {
+                            av_push(pav[index-1], newRV_noinc((SV*)pav[index]));
+                            pav[index] = newAV();
+                        }
+                    }
+                }
+            }
 
 	    /* preserve previous error code */
 	    HRESULT hr2 = SafeArrayUnlock(psa);
@@ -3008,7 +3021,6 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	hr = VariantCopy(&pVarObj->variant, pVariant);
 	if (FAILED(hr)) {
 	    Safefree(pVarObj);
-	    ReportOleError(aTHX_ stash, hr, NULL, NULL);
             break;
 	}
 
@@ -3074,6 +3086,57 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
             sv_setnv(sv, V_R8(&variant));
 	VariantClear(&variant);
 	break;
+    }
+
+    case VT_RECORD:
+    {
+	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+        IRecordInfo *pinfo = V_RECORDINFO(pVariant);
+        void *pRecord = V_RECORD(pVariant);
+
+        ULONG count = 0;
+        hr = pinfo->GetFieldNames(&count, NULL);
+	if (FAILED(hr) || count == 0)
+            break;
+
+        BSTR *names;
+        Newz(0, names, count, BSTR);
+        hr = pinfo->GetFieldNames(&count, names);
+	if (FAILED(hr)) {
+            Safefree(names);
+            break;
+        }
+
+        HV *hv = newHV();
+        for (ULONG i=0; i<count; ++i) {
+            VARIANT variant;
+            void *pData = NULL;
+            VariantInit(&variant);
+            hr = pinfo->GetFieldNoCopy(pRecord, names[i], &variant, &pData);
+            if (FAILED(hr))
+                break;
+
+            SV *value = newSV(0);
+            hr = SetSVFromVariantEx(aTHX_ &variant, value, stash, FALSE);
+            if (FAILED(hr)) {
+                SvREFCNT_dec(value);
+                break;
+            }
+	    SV *name = sv_setbstr(aTHX_ NULL, names[i], cp);
+            hv_store_ent(hv, name, value, 0);
+            SvREFCNT_dec(name);
+        }
+
+        for (i=0; i<count; ++i)
+            SysFreeString(names[i]);
+        Safefree(names);
+
+	if (SUCCEEDED(hr))
+	    sv_setsv(sv, sv_2mortal(newRV_noinc((SV*)hv)));
+	else
+	    SvREFCNT_dec((SV*)hv);
+
+        break;
     }
 
     case VT_CY:
@@ -3795,10 +3858,12 @@ PPCODE:
 	}
 	else {
 	    hr = SetSVFromVariantEx(aTHX_ &result, retval, stash);
-	    ST(0) = &PL_sv_yes;
+            if (SUCCEEDED(hr))
+                ST(0) = &PL_sv_yes;
 	}
     }
-    else {
+
+    if (FAILED(hr)) {
 	/* use more specific error code from exception when available */
 	if (hr == DISP_E_EXCEPTION && FAILED(excepinfo.scode))
 	    hr = excepinfo.scode;
