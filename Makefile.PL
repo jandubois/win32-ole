@@ -1,6 +1,10 @@
 use Config;
 use ExtUtils::MakeMaker qw(&WriteMakefile &neatvalue);
 
+unless ($^O eq "MSWin32" || $^O eq "cygwin") {
+    die "OS unsupported\n";
+}
+
 my $INSTDIR = grep(/INSTALLDIRS=perl/i, @ARGV) ? "lib" : "site\\lib";
 
 my @MM =
