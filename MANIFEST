@@ -1,6 +1,7 @@
 Changes			Lowlevel changelog
 MANIFEST
 MANIFEST.SKIP
+META.yml
 Makefile.PL
 OLE.xs
 README

@@ -1,4 +1,7 @@
-use Config;
+use strict;
+use warnings;
+
+use Config qw(%Config);
 use ExtUtils::MakeMaker qw(&WriteMakefile &neatvalue);
 
 unless ($^O eq "MSWin32" || $^O eq "cygwin") {
@@ -7,36 +10,20 @@ unless ($^O eq "MSWin32" || $^O eq "cygwin") {
 
 my $INSTDIR = grep(/INSTALLDIRS=perl/i, @ARGV) ? "lib" : "site\\lib";
 
-my @MM =
+my %param =
 (
- 'NAME'	        => 'Win32::OLE',
- 'VERSION_FROM' => 'lib/Win32/OLE.pm',
- 'XS'	        => { 'OLE.xs' => 'OLE.cpp' },
- # Without the next line MakeMaker will not export the bootstrap function
- # (because we are using FUNCLIST too).
- 'DL_FUNCS'     => { 'Win32::OLE' => [] },
- 'dist'	        => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
- 'clean'	=> { FILES => 'test.xls browser_to_blib' },
+    NAME         => 'Win32::OLE',
+    VERSION_FROM => 'lib/Win32/OLE.pm',
+    XS           => { 'OLE.xs' => 'OLE.cpp' },
+    # Without the next line MakeMaker will not export the bootstrap function
+    # (because we are using FUNCLIST too).
+    DL_FUNCS     => { 'Win32::OLE' => [] },
+    clean        => { FILES => 'test.xls' },
 );
-
-# Add additional settings for the creation of PPD files
-if ($ExtUtils::MakeMaker::VERSION >= 5.43) {
-    push @MM, 'ABSTRACT_FROM' => 'lib/Win32/OLE.pm';
-    push @MM, 'AUTHOR' => 'Jan Dubois (jand@activestate.com)';
-    # Actually the OLE module was originally written by hip/ActiveWare.
-    # It has been converted to standard Perl XS format by Gurusamy Sarathy.
-    # Jan Dubois is currently the most active maintainer of this module.
-    # Please see the OLE.pm file for complete copyright information.
-}
-
-# XXX Enable this when MakeMaker supports 'FUNCLIST'
-if ($ExtUtils::MakeMaker::VERSION >= 5.4302) {
-    push @MM, 'FUNCLIST' => [qw(SetSVFromVariant SetSVFromVariantEx SetVariantFromSV CreatePerlObject)];
-}
-
 my $FUNCLIST = [qw(SetSVFromVariant SetSVFromVariantEx SetVariantFromSV CreatePerlObject)];
-
-WriteMakefile(@MM);
+$param{FUNCLIST} = $FUNCLIST if eval "$ExtUtils::MakeMaker::VERSION" >= 5.4302;
+$param{NO_META} = 1 if eval "$ExtUtils::MakeMaker::VERSION" >= 6.10_03;
+WriteMakefile(%param);
 
 sub MY::xs_c {
     '
