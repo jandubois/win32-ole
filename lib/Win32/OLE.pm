@@ -936,7 +936,7 @@ information about OLE support for Perl on Win32.
 
 Originally put together by the kind people at Hip and Activeware.
 
-Gurusamy Sarathy <gsar@activestate.com> subsequently fixed several
+Gurusamy Sarathy <gsar@cpan.org> subsequently fixed several
 major bugs, memory leaks, and reliability problems, along with some
 redesign of the code.
 
@@ -956,7 +956,7 @@ related questions only, of course).
     ActiveState Tool Corp., http://www.ActiveState.com
 
     Other modifications Copyright (c) 1997-2006 by Gurusamy Sarathy
-    <gsar@activestate.com> and Jan Dubois <jand@activestate.com>
+    <gsar@cpan.org> and Jan Dubois <jand@activestate.com>
 
     You may distribute under the terms of either the GNU General Public
     License or the Artistic License, as specified in the README file.
