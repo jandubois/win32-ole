@@ -3,6 +3,12 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1708  April 15th 2008
+	- new version for separate upload to CPAN
+	- updated email addresses
+	- simplified Makefile.PL
+	- added META.yml
+
 0.1707  unreleased, August 7th 2006
 	- add special support for tlbinf32.dll from Microsoft
 
