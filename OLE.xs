@@ -43,6 +43,17 @@
 #   define DEBUGBREAK
 #endif
 
+// MingW is missing these 2 macros
+#ifndef V_RECORD
+#   ifdef NONAMELESSUNION
+#       define V_RECORDINFO(X) ((X)->__VARIANT_NAME_1.__VARIANT_NAME_2.__VARIANT_NAME_3.__VARIANT_NAME_4.pRecInfo)
+#       define V_RECORD(X)     ((X)->__VARIANT_NAME_1.__VARIANT_NAME_2.__VARIANT_NAME_3.__VARIANT_NAME_4.pvRecord)
+#   else
+#       define V_RECORDINFO(X) ((X)->pRecInfo)
+#       define V_RECORD(X)     ((X)->pvRecord)
+#   endif
+#endif
+
 extern "C" {
 #ifndef GUIDKIND_DEFAULT_SOURCE_DISP_IID
 #   define GUIDKIND_DEFAULT_SOURCE_DISP_IID 1
@@ -3108,7 +3119,8 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
         }
 
         HV *hv = newHV();
-        for (ULONG i=0; i<count; ++i) {
+        ULONG i;
+        for (i=0; i<count; ++i) {
             VARIANT variant;
             void *pData = NULL;
             VariantInit(&variant);

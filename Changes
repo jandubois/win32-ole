@@ -9,6 +9,8 @@ are by Jan Dubois unless attributed otherwise.
 	- simplified Makefile.PL
 	- added META.yml
 	- additional casts to suppress compiler warnings under Win64
+	- added V_RECORD() and V_RECORDINFO macros for MinGW
+	- changed code to be conformant with ISO for() variable scoping rules
 
 0.1707  unreleased, August 7th 2006
 	- add special support for tlbinf32.dll from Microsoft
