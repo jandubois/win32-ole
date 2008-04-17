@@ -696,7 +696,7 @@ GetWideChar(pTHX_ SV *sv, OLECHAR *wide, int len, UINT cp)
 	    *wide = (OLECHAR) 0;
 	    return wide;
 	}
-	count = MultiByteToWideChar(cp, 0, str, strlen, wide, len);
+	count = MultiByteToWideChar(cp, 0, str, (int)strlen, wide, len);
 	if (count > 0)
 	    return wide;
     }
@@ -705,7 +705,7 @@ GetWideChar(pTHX_ SV *sv, OLECHAR *wide, int len, UINT cp)
 	return wide;
     }
 
-    count = MultiByteToWideChar(cp, 0, str, strlen, NULL, 0);
+    count = MultiByteToWideChar(cp, 0, str, (int)strlen, NULL, 0);
     if (count == 0) {
 	warn(MY_VERSION ": GetWideChar() failure: %lu", GetLastError());
 	DEBUGBREAK;
@@ -716,7 +716,7 @@ GetWideChar(pTHX_ SV *sv, OLECHAR *wide, int len, UINT cp)
     }
 
     Newz(0, wide, count, OLECHAR);
-    MultiByteToWideChar(cp, 0, str, strlen, wide, count);
+    MultiByteToWideChar(cp, 0, str, (int)strlen, wide, count);
     return wide;
 
 }   /* GetWideChar */
@@ -764,7 +764,7 @@ IV
 QueryPkgVar(pTHX_ HV *stash, char *var, STRLEN len, IV def=0)
 {
     SV *sv;
-    GV **gv = (GV**)hv_fetch(stash, var, len, FALSE);
+    GV **gv = (GV**)hv_fetch(stash, var, (I32)len, FALSE);
 
     if (gv && (sv = GvSV(*gv)) != NULL && SvIOK(sv)) {
 	DBG(("QueryPkgVar(%s::%s) returns %d\n", HvNAME(stash), var, SvIV(sv)));
@@ -822,7 +822,7 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 	char *pszSource = szSource;
 	char *pszDesc = szDesc;
 
-	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 	if (pExcep->bstrSource)
 	    pszSource = GetMultiByte(aTHX_ pExcep->bstrSource,
 				     szSource, sizeof(szSource), cp);
@@ -895,7 +895,7 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 
 	if (cch > 76 && pLastBlank) {
 	    *pLastBlank = '\n';
-	    cch = pch - pLastBlank;
+	    cch = (int)(pch - pLastBlank);
 	}
     }
 
@@ -1326,7 +1326,7 @@ AllocOleStringFromSV(pTHX_ SV *sv, UINT cp)
     if (SvROK(sv) && sv_derived_from(sv, szUNICODESTRING)) {
         sv = SvRV(sv);
         U16 *pus = (U16*)SvPV(sv, len);
-        BSTR bstr = SysAllocStringLen(NULL, len/2);
+        BSTR bstr = SysAllocStringLen(NULL, (UINT)(len/2));
         for (STRLEN i=0; i < len; ++i)
             bstr[i] = ntohs(pus[i]);
         return bstr;
@@ -1336,9 +1336,9 @@ AllocOleStringFromSV(pTHX_ SV *sv, UINT cp)
         cp = CP_ACP;
 
     char *str = SvPV(sv, len);
-    int count = MultiByteToWideChar(cp, 0, str, len, NULL, 0);
+    int count = MultiByteToWideChar(cp, 0, str, (int)len, NULL, 0);
     BSTR bstr = SysAllocStringLen(NULL, count);
-    MultiByteToWideChar(cp, 0, str, len, bstr, count);
+    MultiByteToWideChar(cp, 0, str, (int)len, bstr, count);
     return bstr;
 }
 
@@ -1399,7 +1399,7 @@ FetchTypeInfo(pTHX_ WINOLEOBJECT *pObj)
 	return;
     }
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
     hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
     if (CheckOleError(aTHX_ stash, hr))
 	return;
@@ -1478,8 +1478,8 @@ NextPropertyName(pTHX_ WINOLEOBJECT *pObj)
 	return NULL;
 
     HV *stash = SvSTASH(pObj->self);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
-    int newenum = QueryPkgVar(aTHX_ stash, _NEWENUM_NAME, _NEWENUM_LEN);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    int newenum = (int)QueryPkgVar(aTHX_ stash, _NEWENUM_NAME, _NEWENUM_LEN);
 
     while (pObj->PropIndex < (UINT)(pObj->cFuncs+pObj->cVars)) {
 	ULONG index = pObj->PropIndex++;
@@ -1881,7 +1881,7 @@ CreateEnumVARIANT(pTHX_ WINOLEOBJECT *pObj)
     dispParams.cArgs = 0;
 
     HV *stash = SvSTASH(pObj->self);
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
 
     Zero(&excepinfo, 1, EXCEPINFO);
     hr = pObj->pDispatch->Invoke(DISPID_NEWENUM, IID_NULL,
@@ -2112,7 +2112,7 @@ EventSink::Invoke(
     else if (SvPOK(m_events)) {
 	HV *stash = gv_stashsv(m_events, FALSE);
 	if (stash) {
-	    GV **pgv = (GV**)hv_fetch(stash, SvPVX(event), SvCUR(event), FALSE);
+	    GV **pgv = (GV**)hv_fetch(stash, SvPVX(event), (I32)SvCUR(event), FALSE);
 	    if (pgv && GvCV(*pgv))
 		callback = (SV*)GvCV(*pgv);
 	}
@@ -2537,9 +2537,9 @@ SetVariantFromSVEx(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	}
 
 	/* Create and fill VARIANT array */
-	SAFEARRAY *psa = SafeArrayCreate(VT_VARIANT, dim, psab);
+	SAFEARRAY *psa = SafeArrayCreate(VT_VARIANT, (UINT)dim, psab);
 	if (psa)
-	    hr = SetSafeArrayFromAV(aTHX_ (AV*)sv, VT_VARIANT, psa, dim,
+	    hr = SetSafeArrayFromAV(aTHX_ (AV*)sv, VT_VARIANT, psa, (int)dim,
 				    cp, lcid);
 	else
 	    hr = E_OUTOFMEMORY;
@@ -2562,7 +2562,7 @@ SetVariantFromSVEx(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
     /* Scalars */
     if (SvIOK(sv)) {
 	V_VT(pVariant) = VT_I4;
-	V_I4(pVariant) = SvIV(sv);
+	V_I4(pVariant) = (LONG)SvIV(sv);
     }
     else if (SvNOK(sv)) {
 	V_VT(pVariant) = VT_R8;
@@ -2670,7 +2670,7 @@ AssignVariantFromSV(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	VARIANT variant;
 	if (SvIOK(sv)) {
 	    V_VT(&variant) = VT_I4;
-	    V_I4(&variant) = SvIV(sv);
+	    V_I4(&variant) = (LONG)SvIV(sv);
 	}
 	else if (SvNOK(sv)) {
 	    V_VT(&variant) = VT_R8;
@@ -2901,8 +2901,8 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 	IV index;
 	for (index = 0; index < dim; ++index) {
 	    pav[index] = newAV();
-	    SafeArrayGetLBound(psa, index+1, &pLowerBound[index]);
-	    SafeArrayGetUBound(psa, index+1, &pUpperBound[index]);
+	    SafeArrayGetLBound(psa, (UINT)(index+1), &pLowerBound[index]);
+	    SafeArrayGetUBound(psa, (UINT)(index+1), &pUpperBound[index]);
 	}
 
 	Copy(pLowerBound, pArrayIndex, dim, long);
@@ -3000,7 +3000,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
     case VT_BSTR:
     {
-	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
 	if (V_ISBYREF(pVariant))
 	    sv_setbstr(aTHX_ sv, *V_BSTRREF(pVariant), cp);
@@ -3075,7 +3075,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
     case VT_DECIMAL:
     {
-	BOOL var = QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
+	BOOL var = (BOOL)QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
         if (var)
             goto ConvertToVariant;
 
@@ -3090,7 +3090,7 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
 
     case VT_RECORD:
     {
-	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
         IRecordInfo *pinfo = V_RECORDINFO(pVariant);
         void *pRecord = V_RECORD(pVariant);
 
@@ -3142,12 +3142,12 @@ SetSVFromVariantEx(pTHX_ VARIANTARG *pVariant, SV* sv, HV *stash,
     case VT_CY:
     default:
     {
-	BOOL var = QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
+	BOOL var = (BOOL)QueryPkgVar(aTHX_ stash, VAR_NAME, VAR_LEN, varDefault);
         if (var)
             goto ConvertToVariant;
 
-	LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 	VARIANT variant;
 
 	VariantInit(&variant);
@@ -3173,7 +3173,7 @@ IV
 GetLocaleNumber(pTHX_ HV *hv, char *key, LCID lcid, LCTYPE lctype)
 {
     if (hv) {
-	SV **psv = hv_fetch(hv, key, strlen(key), FALSE);
+	SV **psv = hv_fetch(hv, key, (I32)strlen(key), FALSE);
 	if (psv)
 	    return SvIV(*psv);
     }
@@ -3192,7 +3192,7 @@ char *
 GetLocaleString(pTHX_ HV *hv, char *key, LCID lcid, LCTYPE lctype)
 {
     if (hv) {
-	SV **psv = hv_fetch(hv, key, strlen(key), FALSE);
+	SV **psv = hv_fetch(hv, key, (I32)strlen(key), FALSE);
 	if (psv)
 	    return SvPV_nolen(*psv);
     }
@@ -3456,7 +3456,7 @@ PPCODE:
     case 0: {		// Initialize
 	DWORD dwCoInit = COINIT_MULTITHREADED;
 	if (items > 1 && SvOK(ST(1)))
-	    dwCoInit = SvIV(ST(1));
+	    dwCoInit = (DWORD)SvIV(ST(1));
 
 	Initialize(aTHX_ gv_stashsv(ST(0), TRUE), dwCoInit);
 	break;
@@ -3521,7 +3521,7 @@ PPCODE:
     HV *stash = gv_stashsv(self, TRUE);
     SV *progid = ST(1);
     SV *destroy = NULL;
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     Initialize(aTHX_ stash);
     SetLastOleError(aTHX_ stash);
@@ -3686,8 +3686,8 @@ PPCODE:
     HV *stash = SvSTASH(pObj->self);
     SetLastOleError(aTHX_ stash);
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     /* allow [wFlags, 'Method'] instead of 'Method' */
     if (SvROK(method) && (sv = SvRV(method)) &&	SvTYPE(sv) == SVt_PVAV &&
@@ -3699,12 +3699,12 @@ PPCODE:
 
     if (SvIOK(method)) {
         /* XXX this will NOT work with named parameters */
-        dispID = SvIV(method);
+        dispID = (DISPID)SvIV(method);
     }
     else if (SvPOK(method)) {
 	buffer = SvPV(method, length);
 	if (length > 0) {
-            int newenum = QueryPkgVar(aTHX_ stash, _NEWENUM_NAME, _NEWENUM_LEN);
+            int newenum = (int)QueryPkgVar(aTHX_ stash, _NEWENUM_NAME, _NEWENUM_LEN);
             if (newenum && strEQ(buffer, "_NewEnum")) {
                 AV *av = newAV();
                 PUSHMARK(sp);
@@ -3753,7 +3753,7 @@ PPCODE:
 	DISPID  *rgdispids;
 	HV      *hv = (HV*)sv;
 
-	dispParams.cNamedArgs = HvKEYS(hv);
+	dispParams.cNamedArgs = (UINT)HvKEYS(hv);
 	dispParams.cArgs += dispParams.cNamedArgs - 1;
 
 	New(0, rghe, dispParams.cNamedArgs, HE*);
@@ -3765,7 +3765,7 @@ PPCODE:
 	New(0, rgszNames, 1+dispParams.cNamedArgs, OLECHAR*);
 	New(0, rgdispids, 1+dispParams.cNamedArgs, DISPID);
 
-	rgszNames[0] = AllocOleString(aTHX_ buffer, length, cp);
+	rgszNames[0] = AllocOleString(aTHX_ buffer, (int)length, cp);
 	hv_iterinit(hv);
 	for (index = 0; index < dispParams.cNamedArgs; ++index) {
 	    rghe[index] = hv_iternext(hv);
@@ -3943,8 +3943,8 @@ PPCODE:
     HV *stash = SvSTASH(pObj->self);
     SetLastOleError(aTHX_ stash);
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     HRESULT hr = GetHashedDispID(aTHX_ pObj, method, dispID, lcid, cp);
     if (FAILED(hr))
@@ -4050,7 +4050,7 @@ PPCODE:
     HV *stash = gv_stashsv(self, TRUE);
     SV *progid = ST(1);
     SV *destroy = NULL;
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     Initialize(aTHX_ stash);
     SetLastOleError(aTHX_ stash);
@@ -4107,7 +4107,7 @@ PPCODE:
     HV *stash = gv_stashsv(self, TRUE);
     SV *pathname = ST(1);
     SV *destroy = NULL;
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     Initialize(aTHX_ stash);
     SetLastOleError(aTHX_ stash);
@@ -4154,7 +4154,7 @@ PPCODE:
     TYPEATTR  *pTypeAttr;
 
     HV *stash = gv_stashsv(self, TRUE);
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
 
     SetLastOleError(aTHX_ stash);
     HRESULT hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
@@ -4189,8 +4189,8 @@ PPCODE:
 
     DBG(("QueryInterface(%s)\n", pszItf));
     HV *stash = SvSTASH(pObj->self);
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     SetLastOleError(aTHX_ stash);
 
@@ -4249,8 +4249,8 @@ PPCODE:
 	XSRETURN_EMPTY;
 
     HV *stash = gv_stashsv(ST(0), TRUE);
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     SetLastOleError(aTHX_ stash);
     hr = pObj->pDispatch->GetTypeInfo(0, lcid, &pTypeInfo);
@@ -4321,8 +4321,8 @@ PPCODE:
 	XSRETURN_EMPTY;
     CoUninitialize();
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
     SetLastOleError(aTHX_ stash);
 
     IID iid;
@@ -4526,8 +4526,8 @@ PPCODE:
     VariantInit(&result);
     VariantInit(&propName);
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     dispParams.cArgs = 0;
     dispParams.rgvarg = NULL;
@@ -4599,8 +4599,8 @@ PPCODE:
     HV *stash = SvSTASH(pObj->self);
     SetLastOleError(aTHX_ stash);
 
-    LCID lcid = QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
-    UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ stash, LCID_NAME, LCID_LEN, lcidDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
     dispParams.rgdispidNamedArgs = &dispIDParam;
     dispParams.rgvarg = propertyValue;
@@ -4723,8 +4723,8 @@ PPCODE:
     OLECHAR Buffer[OLE_BUF_SIZ];
     OLECHAR *pBuffer;
     HRESULT hr;
-    LCID lcid = SvIOK(locale) ? SvIV(locale) : lcidDefault;
-    UINT cp = SvIOK(codepage) ? SvIV(codepage) : cpDefault;
+    LCID lcid = SvIOK(locale) ? (LCID)SvIV(locale) : lcidDefault;
+    UINT cp = SvIOK(codepage) ? (UINT)SvIV(codepage) : cpDefault;
     HV *stash = gv_stashpv(szWINOLE, TRUE);
 
     Initialize(aTHX_ stash);
@@ -4836,7 +4836,7 @@ PPCODE:
                             newCONSTSUB(hv, pszName, sv);
                         }
                         else
-                            hv_store(hv, pszName, strlen(pszName), sv, 0);
+                            hv_store(hv, pszName, (I32)strlen(pszName), sv, 0);
                     }
                     SysFreeString(bstr);
                     ReleaseBuffer(aTHX_ pszName, szName);
@@ -5067,7 +5067,7 @@ PPCODE:
     }
     else { /* Next */
 	if (items > 1)
-	    count = SvIV(ST(1));
+	    count = (int)SvIV(ST(1));
 	if (count < 1) {
 	    warn(MY_VERSION ": Win32::OLE::Enum::Next: invalid Count %ld",
 		 count);
@@ -5122,7 +5122,7 @@ PPCODE:
 
     HV *olestash = GetWin32OleStash(aTHX_ self);
     SetLastOleError(aTHX_ olestash);
-    int count = (items > 1) ? SvIV(ST(1)) : 1;
+    int count = (items > 1) ? (int)SvIV(ST(1)) : 1;
     HRESULT hr = pEnumObj->pEnum->Skip(count);
     CheckOleError(aTHX_ olestash, hr);
     ST(0) = boolSV(hr == S_OK);
@@ -5191,15 +5191,15 @@ PPCODE:
 		AV *av = (AV*)SvRV(sv);
 		SV **elt = av_fetch(av, 0, FALSE);
 		if (elt)
-		    rgsabound[iDim].lLbound = SvIV(*elt);
+		    rgsabound[iDim].lLbound = (LONG)SvIV(*elt);
 		rgsabound[iDim].cElements = 1;
 		elt = av_fetch(av, 1, FALSE);
 		if (elt)
 		    rgsabound[iDim].cElements +=
-			SvIV(*elt) - rgsabound[iDim].lLbound;
+			(ULONG)(SvIV(*elt) - rgsabound[iDim].lLbound);
 	    }
 	    else
-		rgsabound[iDim].cElements = SvIV(sv);
+		rgsabound[iDim].cElements = (ULONG)SvIV(sv);
 	}
 
 	SAFEARRAY *psa = SafeArrayCreate(vt_base, cDims, rgsabound);
@@ -5222,7 +5222,7 @@ PPCODE:
 	unsigned char* pDest;
 	STRLEN len;
 	char *ptr = SvPV(data, len);
-	V_ARRAY(pVariant) = SafeArrayCreateVector(VT_UI1, 0, len);
+	V_ARRAY(pVariant) = SafeArrayCreateVector(VT_UI1, 0, (ULONG)len);
 	if (V_ARRAY(pVariant)) {
 	    V_VT(pVariant) = VT_UI1 | VT_ARRAY;
 	    hr = SafeArrayAccessData(V_ARRAY(pVariant), (void**)&pDest);
@@ -5237,9 +5237,9 @@ PPCODE:
 	}
     }
     else {
-	UINT cp = QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
-	LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
-				lcidDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
+                                      lcidDefault);
 	hr = AssignVariantFromSV(aTHX_ data, pVariant, cp, lcid);
 	if (FAILED(hr)) {
 	    Safefree(pVarObj);
@@ -5284,7 +5284,7 @@ PPCODE:
     HRESULT hr;
     VARIANT variant;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
 
     SV *sv = &PL_sv_undef;
     SetLastOleError(aTHX_ olestash);
@@ -5319,7 +5319,7 @@ PPCODE:
 
     HRESULT hr = E_INVALIDARG;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
+    LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
 
     SetLastOleError(aTHX_ olestash);
     /* XXX: Does it work with VT_BYREF? */
@@ -5377,7 +5377,7 @@ PPCODE:
 	long *rgIndices;
 	New(0, rgIndices, cDims, long);
 	for (int iDim=0; iDim < cDims; ++iDim)
-            rgIndices[iDim] = SvIV(ST(1+iDim));
+            rgIndices[iDim] = (long)SvIV(ST(1+iDim));
 
 	VARTYPE vt_base = V_VT(pSource) & VT_TYPEMASK;
 	V_VT(&variant) = vt_base | VT_BYREF;
@@ -5446,14 +5446,14 @@ PPCODE:
 
     if (items > 1) {
 	if (SvIOK(ST(1)))
-	    dwFlags = SvIV(ST(1));
+	    dwFlags = (DWORD)SvIV(ST(1));
 	else if SvPOK(ST(1))
 	    fmt = SvPV_nolen(ST(1));
     }
     if (items > 2)
-	lcid = SvIV(ST(2));
+	lcid = (LCID)SvIV(ST(2));
     else
-	lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
+	lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
 
     HRESULT hr;
     VARIANT variant;
@@ -5514,7 +5514,7 @@ PPCODE:
     if (items > 1) {
 	SV *format = ST(1);
 	if (SvIOK(format))
-	    dwFlags = SvIV(format);
+	    dwFlags = (DWORD)SvIV(format);
 	else if (SvROK(format) && SvTYPE(SvRV(format)) == SVt_PVHV)
 	    hv = (HV*)SvRV(format);
 	else {
@@ -5525,9 +5525,9 @@ PPCODE:
     }
 
     if (items > 2)
-	lcid = SvIV(ST(2));
+	lcid = (LCID)SvIV(ST(2));
     else
-	lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
+	lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
 
     HRESULT hr;
     VARIANT variant;
@@ -5539,16 +5539,16 @@ PPCODE:
     CURRENCYFMTA afmt;
     Zero(&afmt, 1, CURRENCYFMTA);
 
-    afmt.NumDigits        = GetLocaleNumber(aTHX_ hv, "NumDigits",
-                                            lcid, LOCALE_IDIGITS);
-    afmt.LeadingZero      = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-                                            lcid, LOCALE_ILZERO);
-    afmt.Grouping         = GetLocaleNumber(aTHX_ hv, "Grouping",
-                                            lcid, LOCALE_SMONGROUPING);
-    afmt.NegativeOrder    = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-                                            lcid, LOCALE_INEGCURR);
-    afmt.PositiveOrder    = GetLocaleNumber(aTHX_ hv, "PositiveOrder",
-                                            lcid, LOCALE_ICURRENCY);
+    afmt.NumDigits        = (UINT)GetLocaleNumber(aTHX_ hv, "NumDigits",
+                                                  lcid, LOCALE_IDIGITS);
+    afmt.LeadingZero      = (UINT)GetLocaleNumber(aTHX_ hv, "LeadingZero",
+                                                  lcid, LOCALE_ILZERO);
+    afmt.Grouping         = (UINT)GetLocaleNumber(aTHX_ hv, "Grouping",
+                                                  lcid, LOCALE_SMONGROUPING);
+    afmt.NegativeOrder    = (UINT)GetLocaleNumber(aTHX_ hv, "NegativeOrder",
+                                                  lcid, LOCALE_INEGCURR);
+    afmt.PositiveOrder    = (UINT)GetLocaleNumber(aTHX_ hv, "PositiveOrder",
+                                                  lcid, LOCALE_ICURRENCY);
 
     afmt.lpDecimalSep     = GetLocaleString(aTHX_ hv, "DecimalSep",
                                             lcid, LOCALE_SMONDECIMALSEP);
@@ -5631,7 +5631,7 @@ PPCODE:
     if (items > 1) {
 	SV *format = ST(1);
 	if (SvIOK(format))
-	    dwFlags = SvIV(format);
+	    dwFlags = (DWORD)SvIV(format);
 	else if (SvROK(format) && SvTYPE(SvRV(format)) == SVt_PVHV)
 	    hv = (HV*)SvRV(format);
 	else {
@@ -5642,9 +5642,9 @@ PPCODE:
     }
 
     if (items > 2)
-	lcid = SvIV(ST(2));
+	lcid = (LCID)SvIV(ST(2));
     else
-	lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
+	lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN, lcidDefault);
 
     HRESULT hr;
     VARIANT variant;
@@ -5658,14 +5658,14 @@ PPCODE:
 
     Zero(&afmt, 1, NUMBERFMT);
 
-    afmt.NumDigits     = GetLocaleNumber(aTHX_ hv, "NumDigits",
-                                         lcid, LOCALE_IDIGITS);
-    afmt.LeadingZero   = GetLocaleNumber(aTHX_ hv, "LeadingZero",
-                                         lcid, LOCALE_ILZERO);
-    afmt.Grouping      = GetLocaleNumber(aTHX_ hv, "Grouping",
-                                         lcid, LOCALE_SGROUPING);
-    afmt.NegativeOrder = GetLocaleNumber(aTHX_ hv, "NegativeOrder",
-                                         lcid, LOCALE_INEGNUMBER);
+    afmt.NumDigits     = (UINT)GetLocaleNumber(aTHX_ hv, "NumDigits",
+                                               lcid, LOCALE_IDIGITS);
+    afmt.LeadingZero   = (UINT)GetLocaleNumber(aTHX_ hv, "LeadingZero",
+                                               lcid, LOCALE_ILZERO);
+    afmt.Grouping      = (UINT)GetLocaleNumber(aTHX_ hv, "Grouping",
+                                               lcid, LOCALE_SGROUPING);
+    afmt.NegativeOrder = (UINT)GetLocaleNumber(aTHX_ hv, "NegativeOrder",
+                                               lcid, LOCALE_INEGNUMBER);
 
     afmt.lpDecimalSep  = GetLocaleString(aTHX_ hv, "DecimalSep",
                                          lcid, LOCALE_SDECIMAL);
@@ -5774,9 +5774,9 @@ PPCODE:
 	    hr = SetSVFromVariantEx(aTHX_ pVariant, sv, olestash);
 	}
 	else { /* Put */
-	    UINT cp = QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
-	    LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
-				    lcidDefault);
+	    UINT cp = (UINT)QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
+	    LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
+                                          lcidDefault);
 	    sv = self;
 	    hr = AssignVariantFromSV(aTHX_ ST(1), pVariant, cp, lcid);
 	}
@@ -5798,9 +5798,9 @@ PPCODE:
     if (ix == 1 && items == 2 && SvROK(ST(1)) &&
 	SvTYPE(SvRV(ST(1))) == SVt_PVAV)
     {
-	UINT cp = QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
-	LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
-				lcidDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
+                                      lcidDefault);
 	HRESULT hr = SetSafeArrayFromAV(aTHX_ (AV*)SvRV(ST(1)), vt_base, psa,
 					cDims, cp, lcid);
 	CheckOleError(aTHX_ olestash, hr);
@@ -5817,7 +5817,7 @@ PPCODE:
     long *rgIndices;
     New(0, rgIndices, cDims, long);
     for (int iDim=0; iDim < cDims; ++iDim)
-        rgIndices[iDim] = SvIV(ST(1+iDim));
+        rgIndices[iDim] = (long)SvIV(ST(1+iDim));
 
     VARIANT variant, byref;
     VariantInit(&variant);
@@ -5846,9 +5846,9 @@ PPCODE:
 	}
     }
     else { /* Put */
-	UINT cp = QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
-	LCID lcid = QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
-				lcidDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
+	LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash, LCID_NAME, LCID_LEN,
+                                      lcidDefault);
 	hr = AssignVariantFromSV(aTHX_ ST(items-1), &variant, cp, lcid);
 	if (SUCCEEDED(hr)) {
 	    if (vt_base == VT_BSTR)
@@ -5959,8 +5959,8 @@ PPCODE:
 	SetLastOleError(aTHX_ olestash);
 	VariantInit(&Variant);
 	if ((V_VT(pVariant) & ~VT_BYREF) != VT_BSTR) {
-	    LCID lcid = QueryPkgVar(aTHX_ olestash,
-				    LCID_NAME, LCID_LEN, lcidDefault);
+	    LCID lcid = (LCID)QueryPkgVar(aTHX_ olestash,
+                                          LCID_NAME, LCID_LEN, lcidDefault);
 
 	    hr = VariantChangeTypeEx(&Variant, pVariant, lcid, 0, VT_BSTR);
 	    pVariant = &Variant;
@@ -6000,7 +6000,8 @@ PPCODE:
     char *string1 = SvPV(str1, length1);
     char *string2 = SvPV(str2, length2);
 
-    IV res = CompareStringA(lcid, flags, string1, length1, string2, length2);
+    IV res = CompareStringA((LCID)lcid, (DWORD)flags,
+                            string1, (int)length1, string2, (int)length2);
     XSRETURN_IV(res);
 }
 
@@ -6014,13 +6015,13 @@ PPCODE:
     SV *sv;
     STRLEN length;
     char *string = SvPV(str, length);
-    int len = LCMapStringA(lcid, flags, string, length, NULL, 0);
+    int len = LCMapStringA((LCID)lcid, (DWORD)flags, string, (int)length, NULL, 0);
     if (len > 0) {
         sv = sv_newmortal();
         SvUPGRADE(sv, SVt_PV);
         SvGROW(sv, (STRLEN)(len+1));
-        SvCUR_set(sv, LCMapStringA(lcid, flags, string, length,
-                                   SvPVX(sv), SvLEN(sv)));
+        SvCUR_set(sv, LCMapStringA((LCID)lcid, (DWORD)flags, string, (int)length,
+                                   SvPVX(sv), (int)SvLEN(sv)));
         if (SvCUR(sv))
             SvPOK_on(sv);
     }
@@ -6038,11 +6039,11 @@ GetLocaleInfo(lcid,lctype)
 PPCODE:
 {
     SV *sv = sv_newmortal();
-    int len = GetLocaleInfoA(lcid, lctype, NULL, 0);
+    int len = GetLocaleInfoA((LCID)lcid, (LCTYPE)lctype, NULL, 0);
     if (len > 0) {
         SvUPGRADE(sv, SVt_PV);
         SvGROW(sv, (STRLEN)len);
-        len = GetLocaleInfoA(lcid, lctype, SvPVX(sv), SvLEN(sv));
+        len = GetLocaleInfoA((LCID)lcid, (LCTYPE)lctype, SvPVX(sv), (int)SvLEN(sv));
         if (len) {
             SvCUR_set(sv, len-1);
             SvPOK_on(sv);
@@ -6064,7 +6065,7 @@ PPCODE:
     unsigned short *pCharType;
 
     New(0, pCharType, len, unsigned short);
-    if (GetStringTypeA(lcid, type, string, len, pCharType)) {
+    if (GetStringTypeA((LCID)lcid, (DWORD)type, string, (int)len, pCharType)) {
 	EXTEND(SP, (IV)len);
 	for (int i=0; i < (IV)len; ++i)
 	    PUSHs(sv_2mortal(newSViv(pCharType[i])));
@@ -6134,7 +6135,7 @@ SetLocaleInfo(lcid,lctype,lcdata)
     char *lcdata
 PPCODE:
 {
-    BOOL result = SetLocaleInfoA(lcid, lctype, lcdata);
+    BOOL result = SetLocaleInfoA((LCID)lcid, (LCTYPE)lctype, lcdata);
     if (result)
 	XSRETURN_YES;
 
@@ -6181,7 +6182,7 @@ PPCODE:
     }
     else {
 	stash = GetWin32OleStash(aTHX_ self);
-	UINT cp = QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
+	UINT cp = (UINT)QueryPkgVar(aTHX_ stash, CP_NAME, CP_LEN, cpDefault);
 
 	OLECHAR Buffer[OLE_BUF_SIZ];
 	OLECHAR *pBuffer = GetWideChar(aTHX_ object, Buffer, OLE_BUF_SIZ, cp);
@@ -6231,7 +6232,7 @@ PPCODE:
 
     DWORD dwHelpContext;
     BSTR bstrName, bstrDocString, bstrHelpFile;
-    HRESULT hr = pObj->pTypeLib->GetDocumentation(index, &bstrName,
+    HRESULT hr = pObj->pTypeLib->GetDocumentation((INT)index, &bstrName,
 			  &bstrDocString, &dwHelpContext, &bstrHelpFile);
     HV *olestash = GetWin32OleStash(aTHX_ self);
     if (CheckOleError(aTHX_ olestash, hr))
@@ -6292,7 +6293,7 @@ PPCODE:
     TYPEATTR  *pTypeAttr;
 
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeLib->GetTypeInfo(index, &pTypeInfo);
+    HRESULT hr = pObj->pTypeLib->GetTypeInfo((UINT)index, &pTypeInfo);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
@@ -6323,7 +6324,7 @@ PPCODE:
     HV *olestash = GetWin32OleStash(aTHX_ self);
 
     if (SvIOK(name)) {
-	HRESULT hr = pObj->pTypeLib->GetTypeInfo(SvIV(name), &pTypeInfo);
+	HRESULT hr = pObj->pTypeLib->GetTypeInfo((UINT)SvIV(name), &pTypeInfo);
 	if (CheckOleError(aTHX_ olestash, hr))
 	    XSRETURN_EMPTY;
 
@@ -6338,7 +6339,7 @@ PPCODE:
 	XSRETURN(1);
     }
 
-    UINT cp = QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
+    UINT cp = (UINT)QueryPkgVar(aTHX_ olestash, CP_NAME, CP_LEN, cpDefault);
     TYPEKIND tkind = items > 2 ? (TYPEKIND)SvIV(ST(2)) : TKIND_MAX;
     char *pszName = SvPV_nolen(name);
     int count = pObj->pTypeLib->GetTypeInfoCount();
@@ -6474,7 +6475,7 @@ PPCODE:
     DWORD dwHelpContext;
     BSTR bstrName, bstrDocString, bstrHelpFile;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetDocumentation(memid, &bstrName,
+    HRESULT hr = pObj->pTypeInfo->GetDocumentation((MEMBERID)memid, &bstrName,
 			   &bstrDocString, &dwHelpContext, &bstrHelpFile);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
@@ -6497,7 +6498,7 @@ PPCODE:
 
     FUNCDESC *p;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetFuncDesc(index, &p);
+    HRESULT hr = pObj->pTypeInfo->GetFuncDesc((UINT)index, &p);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
@@ -6544,7 +6545,7 @@ PPCODE:
 
     int flags;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetImplTypeFlags(index, &flags);
+    HRESULT hr = pObj->pTypeInfo->GetImplTypeFlags((UINT)index, &flags);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
@@ -6566,7 +6567,7 @@ PPCODE:
 	XSRETURN_EMPTY;
 
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetRefTypeOfImplType(index, &hRefType);
+    HRESULT hr = pObj->pTypeInfo->GetRefTypeOfImplType((UINT)index, &hRefType);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
@@ -6607,7 +6608,7 @@ PPCODE:
     New(0, rgbstr, count, BSTR);
     unsigned int cNames;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetNames(memid, rgbstr, count, &cNames);
+    HRESULT hr = pObj->pTypeInfo->GetNames((MEMBERID)memid, rgbstr, (UINT)count, &cNames);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
@@ -6674,7 +6675,7 @@ PPCODE:
 
     VARDESC *p;
     HV *olestash = GetWin32OleStash(aTHX_ self);
-    HRESULT hr = pObj->pTypeInfo->GetVarDesc(index, &p);
+    HRESULT hr = pObj->pTypeInfo->GetVarDesc((UINT)index, &p);
     if (CheckOleError(aTHX_ olestash, hr))
 	XSRETURN_EMPTY;
 
