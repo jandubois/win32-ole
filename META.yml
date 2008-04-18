@@ -1,7 +1,7 @@
 --- #YAML:1.0
 name: Win32-OLE
 abstract: OLE Automation extensions
-version: 0.1708
+version: 0.1709
 author:
   - Jan Dubois <jand@activestate.com>
 license: perl

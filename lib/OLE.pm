@@ -10,10 +10,10 @@
 # - "unnamed" default method retries
 
 ########################################################################
-package Win32;
+# package Win32;
 ########################################################################
 
-sub OLELastError {return OLE->LastError()}
+*Win32::OLELastError = sub { return OLE->LastError() };
 
 
 ########################################################################
