@@ -13,6 +13,7 @@ my $Clsids = [];
 $hTypelib->GetKeys($Clsids);
 foreach my $clsid (@$Clsids) {
     $hTypelib->Create($clsid,$hClsid);
+    next unless $hClsid;
     my $Versions = [];
     $hClsid->GetKeys($Versions);
     foreach my $version (@$Versions) {
