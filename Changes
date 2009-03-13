@@ -3,6 +3,10 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.xx    unreleased
+	- Speedup Win32::OLE::Const by avoiding unneccessary calls to
+	  stat().  Thanks to Eric Roode.
+
 0.1709  April 17th 2008
 	- Get rid of "package Win32" statement in lib/OLE.pm because
 	  it confuses the CPAN indexer.

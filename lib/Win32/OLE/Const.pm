@@ -14,7 +14,7 @@ sub _Typelib {
     # Ignore if it looks like a file but doesn't exist.
     # We don't verify existance of monikers or filenames
     # without a full pathname.
-    return unless -f $filename || $filename !~ /^\w:\\.*\.(exe|dll)$/;
+    return if $filename =~ /^\w:\\.*\.(exe|dll)$/ && !-f $filename;
     push @$Typelibs, \@_;
 }
 unless (__PACKAGE__->_Typelibs("TypeLib")) {
