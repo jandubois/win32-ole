@@ -434,7 +434,7 @@ undef @Properties;
 
 # 42. Translate character from ANSI -> OEM
 ++$Test;
-my $oemcp = GetLocaleInfo(GetSystemDefaultLCID(), LOCALE_IDEFAULTANSICODEPAGE);
+my $oemcp = GetLocaleInfo(GetSystemDefaultLCID(), LOCALE_IDEFAULTCODEPAGE);
 if ($oemcp == 437 || $oemcp == 850) {
     my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
     print "# Excel version is $Version\n";
