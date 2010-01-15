@@ -46,7 +46,7 @@ use FileHandle;
 use Sys::Hostname;
 
 use Win32::OLE qw(CP_ACP CP_OEMCP CP_UTF8 HRESULT in valof with);
-use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG);
+use Win32::OLE::NLS qw(:DEFAULT :LANG :SUBLANG :LOCALE);
 use Win32::OLE::Variant;
 
 $Excel::Variant = 1;
@@ -433,23 +433,30 @@ printf "ok %d\n", ++$Test;
 undef @Properties;
 
 # 42. Translate character from ANSI -> OEM
-my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
-print "# Excel version is $Version\n";
+++$Test;
+my $oemcp = GetLocaleInfo(GetSystemDefaultLCID(), LOCALE_IDEFAULTANSICODEPAGE);
+if ($oemcp == 437 || $oemcp == 850) {
+    my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
+    print "# Excel version is $Version\n";
 
-my $LCID = MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_NEUTRAL));
-$LCID = MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL)) if $Version >= 8;
-$Excel::LCID = $LCID;
+    my $LCID = MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_NEUTRAL));
+    $LCID = MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL)) if $Version >= 8;
+    $Excel::LCID = $LCID;
 
-$Cell = $Book->Worksheets('My Sheet #1')->Cells(1,5);
-$Cell->{Formula} = '=CHAR(163)';
-$Excel::CP = CP_ACP;
-my $ANSI = valof $Cell;
-$Excel::CP = CP_OEMCP;
-my $OEM = valof $Cell;
-print "# ANSI(cp1252) -> OEM(cp437/cp850): 163 -> 156\n";
-printf "# ANSI is \"$ANSI\" (%d) and OEM is \"$OEM\" (%d)\n", ord($ANSI), ord($OEM);
-print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
-printf "ok %d\n", ++$Test;
+    $Cell = $Book->Worksheets('My Sheet #1')->Cells(1,5);
+    $Cell->{Formula} = '=CHAR(163)';
+    $Excel::CP = CP_ACP;
+    my $ANSI = valof $Cell;
+    $Excel::CP = CP_OEMCP;
+    my $OEM = valof $Cell;
+    print "# ANSI(cp1252) -> OEM(cp437/cp850): 163 -> 156\n";
+    printf "# ANSI is \"$ANSI\" (%d) and OEM is \"$OEM\" (%d)\n", ord($ANSI), ord($OEM);
+    print "not " unless ord($ANSI) == 163 && ord($OEM) == 156;
+    printf "ok %d\n", $Test;
+}
+else {
+    printf "ok %d # skip OEM codepage $oemcp is neither 437 nor 850\n", $Test;
+}
 
 # 43. Save workbook to file
 print "not " unless $Book->SaveAs($File);

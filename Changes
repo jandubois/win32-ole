@@ -6,6 +6,8 @@ are by Jan Dubois unless attributed otherwise.
 0.xx    unreleased
 	- Speedup Win32::OLE::Const by avoiding unneccessary calls to
 	  stat().  Thanks to Eric Roode.
+	- Skip ANSI <-> OEM conversion test unless the OEM code page
+	  is 437 or 850 [RT #53704]
 
 0.1709  April 17th 2008
 	- Get rid of "package Win32" statement in lib/OLE.pm because
