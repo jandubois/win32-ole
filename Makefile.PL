@@ -1,3 +1,4 @@
+use 5.006;
 use strict;
 use warnings;
 
@@ -19,11 +20,23 @@ my %param =
     # (because we are using FUNCLIST too).
     DL_FUNCS     => { 'Win32::OLE' => [] },
     clean        => { FILES => 'test.xls' },
+    LICENSE => 'perl',
+    AUTHOR       => [
+        'Jan Dubois <jand@activestate.com>',
+    ],
+    ABSTRACT     => 'OLE Automation extensions',
+    MIN_PERL_VERSION => 5.006,
+    META_MERGE => {
+        resources => {
+            repository => 'https://libwin32.googlecode.com/svn/trunk/Win32-OLE',
+            license => 'http://dev.perl.org/licenses/',
+            homepage => 'http://code.google.com/p/libwin32/',
+        },
+    },
 );
 my $FUNCLIST = [qw(SetSVFromVariant SetSVFromVariantEx SetVariantFromSV CreatePerlObject)];
 $param{FUNCLIST} = $FUNCLIST if eval "$ExtUtils::MakeMaker::VERSION" >= 5.4302;
-$param{NO_META} = 1 if eval "$ExtUtils::MakeMaker::VERSION" >= 6.10_03;
-WriteMakefile(%param);
+WriteMakefile1(%param);
 
 sub MY::xs_c {
     '
@@ -56,3 +69,31 @@ $self->{BASEEXT}.def: Makefile.PL
     }
     join('',@m);
 }
+
+sub WriteMakefile1 {  #Written by Alexandr Ciornii, version 0.23. Added by eumm-upgrade.
+    my %params=@_;
+    my $eumm_version=$ExtUtils::MakeMaker::VERSION;
+    $eumm_version=eval $eumm_version;
+    die "EXTRA_META is deprecated" if exists $params{EXTRA_META};
+    die "License not specified" if not exists $params{LICENSE};
+    if ($params{AUTHOR} and ref($params{AUTHOR}) eq 'ARRAY' and $eumm_version < 6.5705) {
+        $params{META_ADD}->{author}=$params{AUTHOR};
+        $params{AUTHOR}=join(', ',@{$params{AUTHOR}});
+    }
+    if ($params{BUILD_REQUIRES} and $eumm_version < 6.5503) {
+        #EUMM 6.5502 has problems with BUILD_REQUIRES
+        $params{PREREQ_PM}={ %{$params{PREREQ_PM} || {}} , %{$params{BUILD_REQUIRES}} };
+        delete $params{BUILD_REQUIRES};
+    }
+    delete $params{CONFIGURE_REQUIRES} if $eumm_version < 6.52;
+    delete $params{MIN_PERL_VERSION} if $eumm_version < 6.48;
+    delete $params{META_MERGE} if $eumm_version < 6.46;
+    delete $params{META_ADD} if $eumm_version < 6.46;
+    delete $params{LICENSE} if $eumm_version < 6.31;
+    delete $params{AUTHOR} if $] < 5.005;
+    delete $params{ABSTRACT_FROM} if $] < 5.005;
+    delete $params{BINARY_LOCATION} if $] < 5.005;
+
+    WriteMakefile(%params);
+}
+
