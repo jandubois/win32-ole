@@ -113,7 +113,7 @@ the local process has read access to the remote registry.  The safest
 =item Win32::OLE->EnumAllObjects([CALLBACK])
 
 This class method returns the number Win32::OLE objects currently in
-existance.  It will call the optional CALLBACK function for each of
+existence.  It will call the optional CALLBACK function for each of
 these objects:
 
 	$Count = Win32::OLE->EnumAllObjects(sub {
@@ -338,7 +338,7 @@ is resolved as
 
 	my $Sheet = $Worksheet->Item('Table1');
 
-provided that the $Worksheets object doesnot have a C<Table1> method
+provided that the $Worksheets object does not have a C<Table1> method
 or property.  This hack has been introduced to call the default method
 of collections which did not name the method in their type library.  The
 recommended way to call the "unnamed" default method is:
@@ -408,7 +408,7 @@ object (through the default method) and returns the value of the object.
 	my $ValOf = valof $Object;
         $Object->{Value} = $NewValue;
 
-Now $ValOf still contains the old value wheras $RefOf would
+Now $ValOf still contains the old value whereas $RefOf would
 resolve to the $NewValue because it is still a reference to
 $Object.
 
@@ -531,7 +531,7 @@ CP_UTF8.  These constants are not exported by default.
 
 =item LCID
 
-This variable controls the locale idnetifier used for all OLE calls.
+This variable controls the locale identifier used for all OLE calls.
 It is set to LOCALE_NEUTRAL by default.  Please check the
 L<Win32::OLE::NLS> module for other locale related information.
 
@@ -881,7 +881,7 @@ The package name has changed from "OLE" to "Win32::OLE".
 =item 2
 
 All functions of the form "Win32::OLEFoo" are now "Win32::OLE::Foo",
-though the old names are temporarily accomodated.  Win32::OLECreateObject()
+though the old names are temporarily accommodated.  Win32::OLECreateObject()
 was changed to Win32::OLE::CreateObject(), and is now called
 Win32::OLE::new() bowing to established convention for naming constructors.
 The old names should be considered deprecated, and will be removed in the
