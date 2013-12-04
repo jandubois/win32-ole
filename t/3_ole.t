@@ -26,7 +26,7 @@ BEGIN {
 
 sub AUTOLOAD {
     my $self = shift;
-    $AUTOLOAD = "SUPER::" . substr $AUTOLOAD, rindex($AUTOLOAD, ':')+1;
+    $AUTOLOAD = "Win32::OLE::" . substr $AUTOLOAD, rindex($AUTOLOAD, ':')+1;
     my $retval = $self->$AUTOLOAD(@_);
     return $retval if defined($retval) || $AUTOLOAD eq 'DESTROY';
     printf "# $AUTOLOAD returned OLE error 0x%08x\n", $LastError;
