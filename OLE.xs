@@ -25,6 +25,10 @@
  *
  */
 
+#ifdef __GNUC__
+#   pragma GCC diagnostic ignored "-Wwrite-strings"
+#endif
+
 // #define _DEBUG
 
 #define register /* be gone */
