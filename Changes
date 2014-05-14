@@ -3,6 +3,10 @@ Revision history for Perl extension Win32::OLE.
 Changes in version 0.01-0.03 are by Gurusamy Sarathy. All other changes
 are by Jan Dubois unless attributed otherwise.
 
+0.1712  May, 14th 2014
+        - Make OLE.xs compatible with 64-bit Cygwin.  Thanks to
+          Alexander Stadler [RT #95612]
+
 0.1711  December, 11th 2013
 	- remove EUMM-Update changes to Makefile.PL, which removed
 	  the updated metadata in 0.1710 from META.yml
