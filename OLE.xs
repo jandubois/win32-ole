@@ -2496,12 +2496,12 @@ SetVariantFromSVEx(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 	IV dim = 1;
 	IV maxdim = 2;
 	AV **pav;
-	LONG *pix;
+	ULONG *pix;
 	unsigned long *plen;
 	SAFEARRAYBOUND *psab;
 
 	New(0, pav, maxdim, AV*);
-	New(0, pix, maxdim, LONG);
+	New(0, pix, maxdim, ULONG);
 	New(0, plen, maxdim, unsigned long);
 	New(0, psab, maxdim, SAFEARRAYBOUND);
 
@@ -2519,7 +2519,7 @@ SetVariantFromSVEx(pTHX_ SV* sv, VARIANT *pVariant, UINT cp, LCID lcid)
 		if (++index >= maxdim) {
 		    maxdim *= 2;
 		    Renew(pav, maxdim, AV*);
-		    Renew(pix, maxdim, LONG);
+		    Renew(pix, maxdim, ULONG);
 		    Renew(plen, maxdim, unsigned long);
 		    Renew(psab, maxdim, SAFEARRAYBOUND);
 		}
