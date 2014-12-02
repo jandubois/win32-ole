@@ -446,16 +446,6 @@ MagicGet(pTHX_ SV *sv)
     }
 }
 
-BOOL
-StartsWithAlpha(pTHX_ SV *sv)
-{
-    char *str = SvPV_nolen(sv);
-    if (SvUTF8(sv))
-        return isALPHA_uni(my_utf8_to_uv((U8*)str));
-    else
-        return isALPHA(*str);
-}
-
 inline void
 SpinMessageLoop(void)
 {
@@ -3555,10 +3545,10 @@ PPCODE:
     /* normal case: no DCOM */
     if (!SvROK(progid) || SvTYPE(SvRV(progid)) != SVt_PVAV) {
 	pBuffer = GetWideChar(aTHX_ progid, Buffer, OLE_BUF_SIZ, cp);
-	if (StartsWithAlpha(aTHX_ progid))
-	    hr = CLSIDFromProgID(pBuffer, &clsid);
-	else
+	if (pBuffer[0] == '{')
 	    hr = CLSIDFromString(pBuffer, &clsid);
+	else
+	    hr = CLSIDFromProgID(pBuffer, &clsid);
 	ReleaseBuffer(aTHX_ pBuffer, Buffer);
 	if (SUCCEEDED(hr)) {
 	    hr = CoCreateInstance(clsid, NULL, CLSCTX_SERVER,
@@ -3608,13 +3598,13 @@ PPCODE:
 
     /* determine CLSID */
     pBuffer = GetWideChar(aTHX_ progid, Buffer, OLE_BUF_SIZ, cp);
-    if (StartsWithAlpha(aTHX_ progid)) {
+    if (pBuffer[0] == '{')
+        hr = CLSIDFromString(pBuffer, &clsid);
+    else {
 	hr = CLSIDFromProgID(pBuffer, &clsid);
 	if (FAILED(hr) && host)
 	    hr = CLSIDFromRemoteRegistry(aTHX_ host, progid, &clsid);
     }
-    else
-        hr = CLSIDFromString(pBuffer, &clsid);
     ReleaseBuffer(aTHX_ pBuffer, Buffer);
     if (FAILED(hr)) {
 	ReportOleError(aTHX_ stash, hr);
