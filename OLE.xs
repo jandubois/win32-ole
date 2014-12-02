@@ -111,7 +111,12 @@ typedef unsigned short WORD;
 #endif
 
 #if PERL_VERSION > 6
-#   define my_utf8_to_uv(s) utf8_to_uvuni(s, NULL)
+#   ifndef NO_MATHOMS
+#      define my_utf8_to_uv(s) utf8_to_uvuni(s, NULL)
+#   else
+       /* this has risk of buffer overflow but too complicated to fix */
+#      define my_utf8_to_uv(s) utf8_to_uvchr_buf(s, s+5, NULL)
+#   endif
 #else
 #   if PERL_SUBVERSION > 0
 #      define my_utf8_to_uv(s) utf8_to_uv_simple(s, NULL)
