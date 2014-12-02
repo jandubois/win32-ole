@@ -4411,14 +4411,14 @@ PPCODE:
 	}
 	else { /* interface _not_ a Win32::OLE::TypeInfo object */
 	    char *pszItf = SvPV_nolen(itf);
-	    if (isalpha(pszItf[0]))
-		hr = FindIID(aTHX_ pObj, pszItf, &iid, &pTypeInfo, cp, lcid);
-	    else {
+	    if (pszItf[0] == '{') {
 		OLECHAR Buffer[OLE_BUF_SIZ];
 		OLECHAR *pBuffer = GetWideChar(aTHX_ itf, Buffer, OLE_BUF_SIZ, cp);
 		hr = IIDFromString(pBuffer, &iid);
 		ReleaseBuffer(aTHX_ pBuffer, Buffer);
 	    }
+	    else
+		hr = FindIID(aTHX_ pObj, pszItf, &iid, &pTypeInfo, cp, lcid);
 	}
     }
     else
