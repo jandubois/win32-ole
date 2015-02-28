@@ -1,5 +1,7 @@
 =pod
 
+=encoding utf8
+
 =head1 NAME
 
 The Perl Journal #10 - Win32::OLE by Jan Dubois
