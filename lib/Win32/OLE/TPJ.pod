@@ -1,6 +1,6 @@
 =pod
 
-=encoding utf8
+=encoding latin1
 
 =head1 NAME
 
