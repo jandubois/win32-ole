@@ -475,7 +475,7 @@ IsLocalMachine(pTHX_ SV *host)
 
     /* Check against local computer name (from registry) */
     if (GetComputerNameA(szComputerName, &dwSize)
-        && stricmp(pszName, szComputerName) == 0)
+        && strcasecmp(pszName, szComputerName) == 0)
     {
         return TRUE;
     }
