@@ -86,6 +86,9 @@ my_strrev(char *str)
 }
 
 #   endif /* strrev */
+#   ifndef stricmp
+#     define stricmp strcasecmp
+#   endif /* stricmp */
 #endif
 
 #define PERL_NO_GET_CONTEXT
@@ -475,7 +478,7 @@ IsLocalMachine(pTHX_ SV *host)
 
     /* Check against local computer name (from registry) */
     if (GetComputerNameA(szComputerName, &dwSize)
-        && strcasecmp(pszName, szComputerName) == 0)
+        && stricmp(pszName, szComputerName) == 0)
     {
         return TRUE;
     }
