@@ -214,8 +214,10 @@ printf "ok %d\n", ++$Test;
 Win32::OLE->Option(LCID => $lcidEnglish);
 $v = Variant(VT_DATE, "1 may 1999 17:00");
 my $str = $v->Date(DATE_LONGDATE);
-print "# LONGDATE is '$str'\n";
-print "not " unless $str eq 'Saturday, May 01, 1999';
+unless ($str eq 'Saturday, May 01, 1999') {
+  print STDERR "# LONGDATE is '$str'\n";
+  print "not " ;
+}
 printf "ok %d\n", ++$Test;
 
 # 28. GetDateFormat with formating string
