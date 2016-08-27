@@ -459,6 +459,14 @@ SpinMessageLoop(void)
 
 }   /* SpinMessageLoop */
 
+/* Fix to compile in Cygwin
+   POSIX has strcasecmp, Win32 has stricmp, Cygwin has strcasecmp but is Win32
+   see http://stackoverflow.com/questions/5820810/case-insensitive-string-comp-in-c 
+*/
+#ifdef __CYGWIN__
+#define stricmp strcasecmp
+#endif
+
 BOOL
 IsLocalMachine(pTHX_ SV *host)
 {
