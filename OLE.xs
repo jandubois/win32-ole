@@ -475,7 +475,7 @@ IsLocalMachine(pTHX_ SV *host)
 
     /* Check against local computer name (from registry) */
     if (GetComputerNameA(szComputerName, &dwSize)
-        && stricmp(pszName, szComputerName) == 0)
+        && strcasecmp(pszName, szComputerName) == 0)
     {
         return TRUE;
     }
@@ -917,12 +917,12 @@ ReportOleError(pTHX_ HV *stash, HRESULT hr, EXCEPINFO *pExcep=NULL,
 	if (warnlvl < 3) {
 	    cv = perl_get_cv("Carp::carp", FALSE);
 	    if (!cv)
-		warn(SvPVX(sv));
+		warn("%s", SvPVX(sv));
 	}
 	else {
 	    cv = perl_get_cv("Carp::croak", FALSE);
 	    if (!cv)
-		croak(SvPVX(sv));
+		croak("%s", SvPVX(sv));
 	}
     }
 
