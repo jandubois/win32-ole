@@ -4937,7 +4937,10 @@ PPCODE:
 		// Retrieve filename of type library
 		char szFile[MAX_PATH+1];
 		LONG cbFile = sizeof(szFile);
-                err = RegQueryValueA(hKeyLangid, "win32", szFile, &cbFile);
+		err = RegQueryValueA(hKeyLangid, "win64", szFile, &cbFile);
+		if (err != ERROR_SUCCESS) {
+		    err = RegQueryValueA(hKeyLangid, "win32", szFile, &cbFile);
+		}
 		if (err == ERROR_SUCCESS && cbFile > 1) {
                     ENTER;
                     SAVETMPS;
