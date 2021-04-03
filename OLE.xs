@@ -86,6 +86,9 @@ my_strrev(char *str)
 }
 
 #   endif /* strrev */
+#   ifndef stricmp
+#     define stricmp strcasecmp
+#   endif /* stricmp */
 #endif
 
 #define PERL_NO_GET_CONTEXT
