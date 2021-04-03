@@ -63,6 +63,8 @@ open(ME,$0) or die $!;
 my $TestCount = grep(/\+\+\$Test/,<ME>);
 close(ME);
 
+my $oemcp = GetLocaleInfo(GetSystemDefaultLCID(), LOCALE_IDEFAULTCODEPAGE);
+
 sub stringify {
     my $arg = shift;
     return "<undef>" unless defined $arg;
@@ -366,11 +368,23 @@ print "# Value is \"$Value\"\n";
 print "not " unless $Value eq 'CamelPerl3.1415';
 printf "ok %d\n", ++$Test;
 
+if ($oemcp == 866) {
+    my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
+    print "# Excel version is $Version\n";
+
+    my $LCID = MAKELCID(MAKELANGID(LANG_ENGLISH, SUBLANG_NEUTRAL));
+    $LCID = MAKELCID(MAKELANGID(LANG_NEUTRAL, SUBLANG_NEUTRAL)) if $Version >= 8;
+    $Excel::LCID = $LCID;
+}
+
 # 34. Set a cell formula and retrieve calculated value
 $Sheet->Cells(3,1)->{Formula} = '=PI()';
 $Value = $Sheet->Cells(3,1)->{Value};
-print "# Value is \"$Value\"\n";
-print "not " unless abs($Value-3.141592) < 0.00001;
+unless (abs($Value-3.141592) < 0.00001) {
+  print STDERR "#OEM codepage $oemcp\n";
+  print STDERR "# Value is \"$Value\"\n";
+  print "not ";
+}
 printf "ok %d\n", ++$Test;
 
 # 35. Add single worksheet and check that worksheet count is incremented
@@ -434,7 +448,6 @@ undef @Properties;
 
 # 42. Translate character from ANSI -> OEM
 ++$Test;
-my $oemcp = GetLocaleInfo(GetSystemDefaultLCID(), LOCALE_IDEFAULTCODEPAGE);
 if ($oemcp == 437 || $oemcp == 850) {
     my ($Version) = $Excel->{Version} =~ /([0-9.]+)/;
     print "# Excel version is $Version\n";
