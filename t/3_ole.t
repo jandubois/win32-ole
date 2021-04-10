@@ -262,10 +262,10 @@ print "not " unless $Cell->Value eq 'x';
 printf "ok %d\n", ++$Test;
 
 # 19. Try to roundtrip a VT_CY value and see if it stays a Variant
-$Cell->{Value} = Variant(VT_CY, 1.25);
+$Cell->{Value} = Variant(VT_CY, 125);
 $Value = $Cell->{Value};
 printf "# Value is %s, ref=%s, type=%d\n", $Value, ref $Value, $Value->Type;
-print "not " unless $Cell->Value == 1.25 &&
+print "not " unless $Cell->Value == 125 &&
                     ref($Value) eq "Excel::Variant" &&
                     $Value->Type == VT_CY;
 printf "ok %d\n", ++$Test;
