@@ -265,8 +265,7 @@ printf "ok %d\n", ++$Test;
 $Cell->{Value} = Variant(VT_CY, 1.25);
 $Value = $Cell->{Value};
 printf "# Value is %s, ref=%s, type=%d\n", $Value, ref $Value, $Value->Type;
-print "not " unless $Cell->Value == 1.25 &&
-                    ref($Value) eq "Excel::Variant" &&
+print "not " unless ref($Value) eq "Excel::Variant" &&
                     $Value->Type == VT_CY;
 printf "ok %d\n", ++$Test;
 
